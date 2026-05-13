@@ -714,6 +714,7 @@
           height: 54px;
           padding: 0;
           border-radius: 50%;
+          background: #000;
           overflow: hidden;
           box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
         }
@@ -742,8 +743,8 @@
           padding: 0;
           border: 0;
           border-radius: 50%;
-          background: #fff;
-          color: #111;
+          background: #000;
+          color: #fff;
           cursor: grab;
           display: grid;
           place-items: center;
