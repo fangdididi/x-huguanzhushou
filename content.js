@@ -447,11 +447,6 @@
           font-weight: 700;
           line-height: 1.2;
         }
-        .xta-subtitle {
-          margin: 3px 0 0;
-          color: var(--muted);
-          font-size: 12px;
-        }
         .xta-status {
           min-height: 28px;
           display: inline-flex;
@@ -484,6 +479,40 @@
         }
         .xta-toggle:hover {
           opacity: 0.92;
+        }
+        .xta-tabs {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 6px;
+          padding: 4px;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          background: #0e1112;
+        }
+        .xta-tab {
+          min-height: 38px;
+          border: 1px solid transparent;
+          border-radius: 6px;
+          background: transparent;
+          color: var(--muted);
+          cursor: pointer;
+          font: inherit;
+          font-size: 13px;
+          font-weight: 700;
+          line-height: 1.25;
+          padding: 6px 8px;
+          overflow-wrap: anywhere;
+        }
+        .xta-tab:hover {
+          color: var(--text);
+          background: var(--surface);
+        }
+        .xta-tab.is-active {
+          color: #07110b;
+          background: var(--green);
+        }
+        .xta-tab-panel[hidden] {
+          display: none !important;
         }
         .xta-status[data-tone="running"] { color: var(--cyan); border-color: rgba(103, 201, 234, 0.48); }
         .xta-status[data-tone="success"] { color: var(--green); border-color: rgba(65, 214, 123, 0.48); }
@@ -539,6 +568,7 @@
         }
         .xta-input:focus,
         .xta-button:focus-visible,
+        .xta-tab:focus-visible,
         .xta-check input:focus-visible {
           border-color: var(--green);
           box-shadow: 0 0 0 3px rgba(65, 214, 123, 0.22);
@@ -712,6 +742,23 @@
           font-size: 12px;
           overflow-wrap: anywhere;
         }
+        .xta-coming-soon {
+          flex: 1;
+          min-height: 0;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          text-align: center;
+        }
+        .xta-coming-soon strong {
+          font-size: 18px;
+        }
+        .xta-coming-soon span {
+          color: var(--muted);
+          font-size: 14px;
+        }
         @media (max-width: 760px) {
           .xta-panel {
             width: calc(100vw - 24px);
@@ -790,6 +837,10 @@
         .xta-panel.is-collapsed .xta-body {
           display: none;
         }
+        .xta-panel.is-collapsed .xta-tabs,
+        .xta-panel.is-collapsed .xta-tab-panel {
+          display: none;
+        }
         @media (max-height: 720px) {
           .xta-body {
             gap: 7px;
@@ -806,7 +857,6 @@
           <header class="xta-head">
             <div>
               <h1 class="xta-title">互关助手</h1>
-              <p class="xta-subtitle">可拖动窗口 · 日志放大</p>
             </div>
           <div class="xta-head-actions">
             <span class="xta-status" data-tone="idle">待机</span>
@@ -814,7 +864,12 @@
           </div>
         </header>
 
-        <div class="xta-body" id="xta-panel-body">
+        <nav class="xta-tabs" role="tablist" aria-label="功能切换">
+          <button class="xta-tab is-active" id="xta-tab-assistant-button" type="button" role="tab" aria-selected="true" aria-controls="xta-tab-assistant" data-tab="assistant">互关助手</button>
+          <button class="xta-tab" id="xta-tab-target-check-button" type="button" role="tab" aria-selected="false" aria-controls="xta-tab-target-check" data-tab="target-check">已关注目标检测</button>
+        </nav>
+
+        <div class="xta-body xta-tab-panel" id="xta-tab-assistant" role="tabpanel" aria-labelledby="xta-tab-assistant-button" data-tab-panel="assistant">
           <div class="xta-controls">
             <section class="xta-card">
               <div class="xta-row xta-settings-row">
@@ -883,6 +938,10 @@
             <div class="xta-log-list"></div>
           </section>
         </div>
+        <section class="xta-card xta-tab-panel xta-coming-soon" id="xta-tab-target-check" role="tabpanel" aria-labelledby="xta-tab-target-check-button" data-tab-panel="target-check" hidden>
+          <strong>已关注目标检测</strong>
+          <span>正在开发中，敬请期待</span>
+        </section>
       </div>
     `;
 
@@ -910,8 +969,23 @@
     ui.plannedCommentCount = shadow.querySelector('.xta-planned-comment');
     ui.logList = shadow.querySelector('.xta-log-list');
     ui.logCount = shadow.querySelector('.xta-log-count');
+    ui.tabs = Array.from(shadow.querySelectorAll('.xta-tab'));
+    ui.tabPanels = Array.from(shadow.querySelectorAll('.xta-tab-panel'));
 
     const xLogoIcon = '<img class="xta-x-logo" src="https://abs.twimg.com/favicons/twitter.3.ico" alt="" draggable="false">';
+
+    const activateTab = (tabName) => {
+      ui.tabs.forEach((tab) => {
+        const active = tab.dataset.tab === tabName;
+        tab.classList.toggle('is-active', active);
+        tab.setAttribute('aria-selected', String(active));
+      });
+
+      ui.tabPanels.forEach((panel) => {
+        const active = panel.dataset.tabPanel === tabName;
+        panel.hidden = !active;
+      });
+    };
 
     const updatePanelCollapsed = (collapsed) => {
       ui.panel.classList.toggle('is-collapsed', collapsed);
@@ -1057,6 +1131,10 @@
     ui.stopButton.addEventListener('click', stopLoop);
     ui.resetButton.addEventListener('click', resetStats);
     ui.clearButton.addEventListener('click', clearLogs);
+    ui.tabs.forEach((tab) => {
+      tab.addEventListener('click', () => activateTab(tab.dataset.tab || 'assistant'));
+    });
+    activateTab('assistant');
     [ui.keyword, ui.loopCount, ui.loopInterval].forEach((element) => {
       element.addEventListener('change', saveCurrentSettings);
     });
