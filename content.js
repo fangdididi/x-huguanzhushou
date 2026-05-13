@@ -17,7 +17,12 @@
   const COMMENT_FILE_CACHE_KEY = 'xtaCommentFileCache';
   const DEFAULT_SETTINGS = {
     keyword: '互关',
-    commentFileName: ''
+    commentFileName: '',
+    loopEnabled: false,
+    testMode: true,
+    onlyBlueVerified: false,
+    loopCount: 1,
+    intervalSeconds: 300
   };
 
   const pendingRuns = new Map();
@@ -137,10 +142,24 @@
     return text || fallback;
   }
 
+  function normalizeBoolean(value, fallback) {
+    return typeof value === 'boolean' ? value : fallback;
+  }
+
+  function normalizeInteger(value, fallback, min) {
+    const number = Number.parseInt(value, 10);
+    return Number.isFinite(number) ? Math.max(min, number) : fallback;
+  }
+
   function readSettingsFromUi() {
     return {
       keyword: normalizeSetting(ui.keyword?.value, DEFAULT_SETTINGS.keyword),
-      commentFileName: normalizeSetting(state.commentFileCache.name, state.settings.commentFileName || '')
+      commentFileName: normalizeSetting(state.commentFileCache.name, state.settings.commentFileName || ''),
+      loopEnabled: Boolean(ui.loopEnabled?.checked ?? DEFAULT_SETTINGS.loopEnabled),
+      testMode: Boolean(ui.testMode?.checked ?? DEFAULT_SETTINGS.testMode),
+      onlyBlueVerified: Boolean(ui.onlyBlue?.checked ?? DEFAULT_SETTINGS.onlyBlueVerified),
+      loopCount: normalizeInteger(ui.loopCount?.value, DEFAULT_SETTINGS.loopCount, 0),
+      intervalSeconds: normalizeInteger(ui.loopInterval?.value, DEFAULT_SETTINGS.intervalSeconds, 1)
     };
   }
 
@@ -161,12 +180,32 @@
   function applySettings(settings) {
     const nextSettings = {
       keyword: normalizeSetting(settings?.keyword, DEFAULT_SETTINGS.keyword),
-      commentFileName: normalizeSetting(settings?.commentFileName, '')
+      commentFileName: normalizeSetting(settings?.commentFileName, ''),
+      loopEnabled: normalizeBoolean(settings?.loopEnabled, DEFAULT_SETTINGS.loopEnabled),
+      testMode: normalizeBoolean(settings?.testMode, DEFAULT_SETTINGS.testMode),
+      onlyBlueVerified: normalizeBoolean(settings?.onlyBlueVerified, DEFAULT_SETTINGS.onlyBlueVerified),
+      loopCount: normalizeInteger(settings?.loopCount, DEFAULT_SETTINGS.loopCount, 0),
+      intervalSeconds: normalizeInteger(settings?.intervalSeconds, DEFAULT_SETTINGS.intervalSeconds, 1)
     };
     state.settings = nextSettings;
 
     if (ui.keyword) {
       ui.keyword.value = normalizeSetting(nextSettings.keyword, DEFAULT_SETTINGS.keyword);
+    }
+    if (ui.loopEnabled) {
+      ui.loopEnabled.checked = nextSettings.loopEnabled;
+    }
+    if (ui.testMode) {
+      ui.testMode.checked = nextSettings.testMode;
+    }
+    if (ui.onlyBlue) {
+      ui.onlyBlue.checked = nextSettings.onlyBlueVerified;
+    }
+    if (ui.loopCount) {
+      ui.loopCount.value = String(nextSettings.loopCount);
+    }
+    if (ui.loopInterval) {
+      ui.loopInterval.value = String(nextSettings.intervalSeconds);
     }
 
     renderCommentFileState();
@@ -175,7 +214,12 @@
   async function saveSettings(settings) {
     state.settings = {
       keyword: normalizeSetting(settings?.keyword ?? state.settings.keyword, DEFAULT_SETTINGS.keyword),
-      commentFileName: normalizeSetting(settings?.commentFileName ?? state.settings.commentFileName, '')
+      commentFileName: normalizeSetting(settings?.commentFileName ?? state.settings.commentFileName, ''),
+      loopEnabled: normalizeBoolean(settings?.loopEnabled ?? state.settings.loopEnabled, DEFAULT_SETTINGS.loopEnabled),
+      testMode: normalizeBoolean(settings?.testMode ?? state.settings.testMode, DEFAULT_SETTINGS.testMode),
+      onlyBlueVerified: normalizeBoolean(settings?.onlyBlueVerified ?? state.settings.onlyBlueVerified, DEFAULT_SETTINGS.onlyBlueVerified),
+      loopCount: normalizeInteger(settings?.loopCount ?? state.settings.loopCount, DEFAULT_SETTINGS.loopCount, 0),
+      intervalSeconds: normalizeInteger(settings?.intervalSeconds ?? state.settings.intervalSeconds, DEFAULT_SETTINGS.intervalSeconds, 1)
     };
 
     await chrome.storage.local.set({
@@ -215,7 +259,7 @@
       state.commentFileCache = cache;
       await chrome.storage.local.set({ [COMMENT_FILE_CACHE_KEY]: cache });
       await saveSettings({
-        keyword: normalizeSetting(ui.keyword?.value, DEFAULT_SETTINGS.keyword),
+        ...readSettingsFromUi(),
         commentFileName: file.name
       });
       await appendLog('success', '已选择并缓存评论文件', {
@@ -939,7 +983,12 @@
     ui.stopButton.addEventListener('click', stopLoop);
     ui.resetButton.addEventListener('click', resetStats);
     ui.clearButton.addEventListener('click', clearLogs);
-    ui.keyword.addEventListener('change', saveCurrentSettings);
+    [ui.keyword, ui.loopCount, ui.loopInterval].forEach((element) => {
+      element.addEventListener('change', saveCurrentSettings);
+    });
+    [ui.loopEnabled, ui.testMode, ui.onlyBlue].forEach((element) => {
+      element.addEventListener('change', saveCurrentSettings);
+    });
     ui.commentFile.addEventListener('click', () => ui.fileInput.click());
     ui.fileInput.addEventListener('change', handleCommentFileSelect);
   }
@@ -1074,20 +1123,7 @@
   }
 
   function readOptions() {
-    const loopEnabled = ui.loopEnabled.checked;
-    const loopCountRaw = Math.max(0, Number(ui.loopCount.value) || 0);
-    const loopCount = loopEnabled ? loopCountRaw : 1;
-    const intervalSeconds = Math.max(1, Number(ui.loopInterval.value) || 300);
-    const settings = readSettingsFromUi();
-
-    return {
-      testMode: ui.testMode.checked,
-      onlyBlueVerified: ui.onlyBlue.checked,
-      loopEnabled,
-      loopCount,
-      intervalSeconds,
-      ...settings
-    };
+    return readSettingsFromUi();
   }
 
   function randomJitterSeconds(baseSeconds) {
@@ -1129,10 +1165,7 @@
     setStatus('准备访问实时搜索页', 'running');
 
     try {
-      await saveSettings({
-        keyword: options.keyword,
-        commentFileName: options.commentFileName
-      });
+      await saveSettings(options);
 
       const comments = await loadComments();
       await appendLog('success', '评论库已加载', {
@@ -1176,15 +1209,7 @@
     state.running = true;
     state.stopping = false;
     state.loopIndex = Number(pendingRun.loopIndex || 0);
-    ui.loopEnabled.checked = Boolean(options.loopEnabled);
-    ui.testMode.checked = options.testMode !== false;
-    ui.onlyBlue.checked = Boolean(options.onlyBlueVerified);
-    ui.loopCount.value = String(options.loopCount ?? 1);
-    ui.loopInterval.value = String(options.intervalSeconds ?? 300);
-    applySettings({
-      keyword: options.keyword,
-      commentFileName: options.commentFileName
-    });
+    applySettings(options);
     updateButtons();
 
     try {
