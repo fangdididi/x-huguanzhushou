@@ -686,6 +686,12 @@
           gap: 8px;
           min-width: 0;
           min-height: 0;
+          overflow: auto;
+          padding-right: 2px;
+          scrollbar-gutter: stable;
+        }
+        .xta-controls > .xta-card {
+          flex-shrink: 0;
         }
         .xta-log-card {
           min-width: 0;
@@ -872,6 +878,15 @@
         <div class="xta-body xta-tab-panel" id="xta-tab-assistant" role="tabpanel" aria-labelledby="xta-tab-assistant-button" data-tab-panel="assistant">
           <div class="xta-controls">
             <section class="xta-card">
+              <div class="xta-metrics">
+                <div class="xta-metric"><span>已关注</span><strong class="xta-followed">0</strong></div>
+                <div class="xta-metric"><span>已评论</span><strong class="xta-commented">0</strong></div>
+                <div class="xta-metric"><span>计划关注</span><strong class="xta-planned-follow">0</strong></div>
+                <div class="xta-metric"><span>计划评论</span><strong class="xta-planned-comment">0</strong></div>
+              </div>
+            </section>
+
+            <section class="xta-card">
               <div class="xta-row xta-settings-row">
                 <label class="xta-field">
                   <span>命中关键词</span>
@@ -917,15 +932,6 @@
                 <button class="xta-button danger xta-stop" type="button" disabled>停止</button>
                 <button class="xta-button secondary xta-reset" type="button">重置统计</button>
                 <button class="xta-button secondary xta-clear" type="button">清空日志</button>
-              </div>
-            </section>
-
-            <section class="xta-card">
-              <div class="xta-metrics">
-                <div class="xta-metric"><span>已关注</span><strong class="xta-followed">0</strong></div>
-                <div class="xta-metric"><span>已评论</span><strong class="xta-commented">0</strong></div>
-                <div class="xta-metric"><span>计划关注</span><strong class="xta-planned-follow">0</strong></div>
-                <div class="xta-metric"><span>计划评论</span><strong class="xta-planned-comment">0</strong></div>
               </div>
             </section>
           </div>
