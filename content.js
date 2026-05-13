@@ -1135,6 +1135,12 @@
     return Math.floor(Math.random() * (max - min + 1)) + min;
   }
 
+  function isTimelineCaptureTimeout(error) {
+    const message = String(error?.message || error || '').toLowerCase();
+    return message.includes('searchtimeline')
+      && (message.includes('超时') || message.includes('timed out') || message.includes('timeout'));
+  }
+
   function sleep(ms) {
     return new Promise((resolve) => window.setTimeout(resolve, ms));
   }
@@ -1340,9 +1346,24 @@
       navigating = true;
       navigateSearchForCapture(options.keyword);
     } catch (error) {
+      const errorMessage = String(error?.message || error || '未知错误');
+      if (isTimelineCaptureTimeout(error) && !state.stopping) {
+        pendingRun.nextRunAt = 0;
+        pendingRun.loopIndex = state.loopIndex;
+        await savePendingRun(pendingRun);
+        setStatus('抓包超时，重新访问实时搜索页', 'running');
+        await appendLog('warn', 'SearchTimeline 抓包超时，重新访问实时搜索页', {
+          错误: errorMessage,
+          地址: buildSearchCaptureUrl(options.keyword)
+        });
+        navigating = true;
+        navigateSearchForCapture(options.keyword);
+        return;
+      }
+
       await clearPendingRun();
       setStatus('执行错误', 'error');
-      await appendLog('error', error.message, {});
+      await appendLog('error', errorMessage, {});
     } finally {
       if (!navigating) {
         state.running = false;
