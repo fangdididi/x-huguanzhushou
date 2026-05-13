@@ -742,8 +742,8 @@
           padding: 0;
           border: 0;
           border-radius: 50%;
-          background: var(--green);
-          color: #07110b;
+          background: #fff;
+          color: #111;
           cursor: grab;
           display: grid;
           place-items: center;
@@ -754,11 +754,12 @@
           cursor: grabbing;
         }
         .xta-x-logo {
-          width: 23px;
-          height: 23px;
+          width: 30px;
+          height: 30px;
           display: block;
-          fill: currentColor;
+          object-fit: contain;
           pointer-events: none;
+          user-select: none;
         }
         .xta-panel.is-collapsed .xta-body {
           display: none;
@@ -884,7 +885,7 @@
     ui.logList = shadow.querySelector('.xta-log-list');
     ui.logCount = shadow.querySelector('.xta-log-count');
 
-    const xLogoIcon = '<svg class="xta-x-logo" viewBox="0 0 24 24" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.657l-5.214-6.817-5.966 6.817H1.68l7.73-8.835L1.254 2.25h6.826l4.713 6.231 5.451-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77Z"></path></svg>';
+    const xLogoIcon = '<img class="xta-x-logo" src="https://abs.twimg.com/favicons/twitter.3.ico" alt="" draggable="false">';
 
     const updatePanelCollapsed = (collapsed) => {
       ui.panel.classList.toggle('is-collapsed', collapsed);
@@ -932,6 +933,7 @@
     let dragBaseLeft = 0;
     let dragBaseTop = 0;
     let dragMoved = false;
+    let dragStartedOnCollapsedToggle = false;
 
     const onPanelPointerDown = (event) => {
       const target = event.target;
@@ -950,6 +952,7 @@
       dragStartX = event.clientX;
       dragStartY = event.clientY;
       dragMoved = false;
+      dragStartedOnCollapsedToggle = isCollapsedToggle;
 
       const rect = host.getBoundingClientRect();
       dragBaseLeft = rect.left;
@@ -1007,12 +1010,18 @@
       window.removeEventListener('pointerup', onPanelPointerUp, true);
       window.removeEventListener('pointercancel', onPanelPointerUp, true);
       clampPanelToViewport();
-      if (dragMoved) {
+      if (dragStartedOnCollapsedToggle && !dragMoved && event.type !== 'pointercancel') {
+        updatePanelCollapsed(false);
+        ui.toggleButton.setAttribute('aria-label', '收起面板');
+        clampPanelToViewport();
+      }
+      if (dragStartedOnCollapsedToggle) {
         suppressToggleClick = true;
         window.setTimeout(() => {
           suppressToggleClick = false;
-        }, 0);
+        }, 250);
       }
+      dragStartedOnCollapsedToggle = false;
     };
 
     ui.head.addEventListener('pointerdown', onPanelPointerDown);
