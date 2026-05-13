@@ -5,7 +5,7 @@
 - 中文版本：[x-huguanzhushou](https://github.com/fangdididi/x-huguanzhushou)
 - 英文版本：[X-Mutual-Follow-Assistant](https://github.com/fangdididi/X-Mutual-Follow-Assistant)
 
-一个用于 X.com 的 Chrome MV3 本地插件。插件会在当前页面显示可拖动控制窗口，访问实时搜索结果，抓取页面真实 `SearchTimeline` 响应，筛选包含关键词的帖子，并按设置判断是否需要关注和评论。
+一个用于 twitter/x.com 的 Chrome MV3 本地插件。插件会在当前页面显示可拖动控制窗口，访问实时搜索结果，抓取页面真实 `SearchTimeline` 响应，筛选包含关键词的帖子，并按设置判断是否需要关注和评论。
 
 ## 功能
 
@@ -25,13 +25,13 @@
 2. 开启“开发者模式”
 3. 点击“加载已解压的扩展程序”
 4. 选择本仓库目录
-5. 打开并登录 `https://x.com`
+5. 打开并登录 twitter/x.com（`https://x.com`）
 6. 点击扩展图标，再点击“显示页面窗口”
 7. 在页面窗口中设置关键词、选择评论文件，然后点击“开始执行”
 
 ## 执行逻辑
 
-插件会访问 `https://x.com/search?q=<关键词>&src=recent_search_click&f=live`，等待页面真实发出的 `SearchTimeline` 接口响应。拿到响应后，插件会解析时间线条目，筛选正文包含关键词的帖子。
+插件会访问 twitter/x.com 搜索页（`https://x.com/search?q=<关键词>&src=recent_search_click&f=live`），等待页面真实发出的 `SearchTimeline` 接口响应。拿到响应后，插件会解析时间线条目，筛选正文包含关键词的帖子。
 
 符合条件时，插件会检查用户是否已经关注、是否为蓝 V、是否是自己的帖子。测试模式下只记录计划动作；关闭测试模式后才会实际发出关注和评论请求。
 
@@ -40,4 +40,4 @@
 - 评论内容来自你选择的本机 `.txt` 文件，每行一条，执行时随机选择。
 - 仓库不包含评论文件，请自行准备。
 - 默认测试模式开启，确认日志逻辑正确后再关闭。
-- 使用前请确保当前 Chrome 已登录 X.com。
+- 使用前请确保当前 Chrome 已登录 twitter/x.com。
