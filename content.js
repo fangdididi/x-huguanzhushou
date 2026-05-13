@@ -722,7 +722,10 @@
           height: 100%;
           justify-content: center;
           gap: 0;
-          cursor: default;
+          cursor: grab;
+        }
+        .xta-panel.is-collapsed .xta-head.dragging {
+          cursor: grabbing;
         }
         .xta-panel.is-collapsed .xta-head > div:not(.xta-head-actions),
         .xta-panel.is-collapsed .xta-status {
@@ -741,9 +744,21 @@
           border-radius: 50%;
           background: var(--green);
           color: #07110b;
-          cursor: pointer;
+          cursor: grab;
+          display: grid;
+          place-items: center;
           font-size: 16px;
           font-weight: 800;
+        }
+        .xta-panel.is-collapsed .xta-head.dragging .xta-toggle {
+          cursor: grabbing;
+        }
+        .xta-x-logo {
+          width: 23px;
+          height: 23px;
+          display: block;
+          fill: currentColor;
+          pointer-events: none;
         }
         .xta-panel.is-collapsed .xta-body {
           display: none;
@@ -869,9 +884,11 @@
     ui.logList = shadow.querySelector('.xta-log-list');
     ui.logCount = shadow.querySelector('.xta-log-count');
 
+    const xLogoIcon = '<svg class="xta-x-logo" viewBox="0 0 24 24" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24h-6.657l-5.214-6.817-5.966 6.817H1.68l7.73-8.835L1.254 2.25h6.826l4.713 6.231 5.451-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77Z"></path></svg>';
+
     const updatePanelCollapsed = (collapsed) => {
       ui.panel.classList.toggle('is-collapsed', collapsed);
-      ui.toggleButton.textContent = collapsed ? '互' : '收起';
+      ui.toggleButton.innerHTML = collapsed ? xLogoIcon : '收起';
       ui.toggleButton.setAttribute('aria-expanded', String(!collapsed));
     };
 
@@ -887,7 +904,14 @@
       host.style.right = '';
     };
 
+    let suppressToggleClick = false;
+
     const onTogglePanel = () => {
+      if (suppressToggleClick) {
+        suppressToggleClick = false;
+        return;
+      }
+
       updatePanelCollapsed(!ui.panel.classList.contains('is-collapsed'));
       if (ui.panel.classList.contains('is-collapsed')) {
         ui.toggleButton.setAttribute('aria-label', '展开面板');
@@ -907,6 +931,7 @@
     let dragStartY = 0;
     let dragBaseLeft = 0;
     let dragBaseTop = 0;
+    let dragMoved = false;
 
     const onPanelPointerDown = (event) => {
       const target = event.target;
@@ -915,7 +940,8 @@
         return;
       }
 
-      if (target.closest('button, input, textarea, select, label')) {
+      const isCollapsedToggle = ui.panel.classList.contains('is-collapsed') && Boolean(target.closest('.xta-toggle'));
+      if (target.closest('button, input, textarea, select, label') && !isCollapsedToggle) {
         return;
       }
 
@@ -923,6 +949,7 @@
       dragPointerId = event.pointerId;
       dragStartX = event.clientX;
       dragStartY = event.clientY;
+      dragMoved = false;
 
       const rect = host.getBoundingClientRect();
       dragBaseLeft = rect.left;
@@ -946,8 +973,14 @@
         return;
       }
 
-      const nextLeft = dragBaseLeft + (event.clientX - dragStartX);
-      const nextTop = dragBaseTop + (event.clientY - dragStartY);
+      const deltaX = event.clientX - dragStartX;
+      const deltaY = event.clientY - dragStartY;
+      if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) {
+        dragMoved = true;
+      }
+
+      const nextLeft = dragBaseLeft + deltaX;
+      const nextTop = dragBaseTop + deltaY;
       const rect = host.getBoundingClientRect();
       const clampedLeft = Math.min(Math.max(nextLeft, 0), Math.max(0, window.innerWidth - rect.width));
       const clampedTop = Math.min(Math.max(nextTop, 0), Math.max(0, window.innerHeight - rect.height));
@@ -974,6 +1007,12 @@
       window.removeEventListener('pointerup', onPanelPointerUp, true);
       window.removeEventListener('pointercancel', onPanelPointerUp, true);
       clampPanelToViewport();
+      if (dragMoved) {
+        suppressToggleClick = true;
+        window.setTimeout(() => {
+          suppressToggleClick = false;
+        }, 0);
+      }
     };
 
     ui.head.addEventListener('pointerdown', onPanelPointerDown);
