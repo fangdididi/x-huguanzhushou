@@ -77,6 +77,10 @@
     post('LOG', runId, { level, message, details });
   }
 
+  function emitStatsDelta(runId, delta) {
+    post('STATS_DELTA', runId, { delta });
+  }
+
   function isSearchTimelineUrl(url) {
     const text = String(url || '');
     return text.includes('https://x.com/i/api/graphql/')
@@ -586,6 +590,10 @@
     if (options.testMode) {
       counters.plannedFollowCount += 1;
       counters.plannedCommentCount += 1;
+      emitStatsDelta(runId, {
+        plannedFollows: 1,
+        plannedComments: 1
+      });
       log(runId, 'success', '测试模式：计划关注并评论', {
         用户: candidate.screenName,
         用户编号: candidate.userId,
@@ -604,6 +612,7 @@
     try {
       await followUser(candidate.userId, csrfToken);
       counters.followedCount += 1;
+      emitStatsDelta(runId, { followed: 1 });
       log(runId, 'success', '关注成功', {
         用户: candidate.screenName,
         用户编号: candidate.userId
@@ -625,6 +634,7 @@
     try {
       await replyTweet(candidate.tweetId, commentText, csrfToken);
       counters.commentedCount += 1;
+      emitStatsDelta(runId, { commented: 1 });
       log(runId, 'success', '评论成功', {
         用户: candidate.screenName,
         推文编号: candidate.tweetId,

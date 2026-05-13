@@ -137,6 +137,31 @@
     await chrome.storage.local.set({ [STATS_KEY]: state.stats });
   }
 
+  function normalizeStatsCount(value) {
+    const number = Number(value || 0);
+    return Number.isFinite(number) ? Math.max(0, number) : 0;
+  }
+
+  function applyStatsDelta(delta = {}) {
+    const nextDelta = {
+      followed: normalizeStatsCount(delta.followed),
+      commented: normalizeStatsCount(delta.commented),
+      plannedFollows: normalizeStatsCount(delta.plannedFollows),
+      plannedComments: normalizeStatsCount(delta.plannedComments)
+    };
+
+    if (!nextDelta.followed && !nextDelta.commented && !nextDelta.plannedFollows && !nextDelta.plannedComments) {
+      return;
+    }
+
+    state.stats.followed += nextDelta.followed;
+    state.stats.commented += nextDelta.commented;
+    state.stats.plannedFollows += nextDelta.plannedFollows;
+    state.stats.plannedComments += nextDelta.plannedComments;
+    renderStats();
+    saveStats();
+  }
+
   function normalizeSetting(value, fallback) {
     const text = String(value || '').trim();
     return text || fallback;
@@ -1096,6 +1121,7 @@
       }, timeoutMs);
 
       pendingRuns.set(runId, {
+        statsDeltaApplied: false,
         resolve: (result) => {
           window.clearTimeout(timeoutId);
           pendingRuns.delete(runId);
@@ -1140,8 +1166,17 @@
       return;
     }
 
+    if (message.type === 'STATS_DELTA') {
+      pending.statsDeltaApplied = true;
+      applyStatsDelta(message.delta || {});
+      return;
+    }
+
     if (message.type === 'RESULT') {
-      pending.resolve(message.result);
+      pending.resolve({
+        ...(message.result || {}),
+        __statsDeltaApplied: Boolean(pending.statsDeltaApplied)
+      });
       return;
     }
 
@@ -1314,12 +1349,14 @@
         comments: Array.isArray(pendingRun.comments) ? pendingRun.comments : []
       }, 60 * 60 * 1000);
 
-      state.stats.followed += Number(result.followedCount || 0);
-      state.stats.commented += Number(result.commentedCount || 0);
-      state.stats.plannedFollows += Number(result.plannedFollowCount || 0);
-      state.stats.plannedComments += Number(result.plannedCommentCount || 0);
-      await saveStats();
-      renderStats();
+      if (!result.__statsDeltaApplied) {
+        applyStatsDelta({
+          followed: result.followedCount,
+          commented: result.commentedCount,
+          plannedFollows: result.plannedFollowCount,
+          plannedComments: result.plannedCommentCount
+        });
+      }
 
       const matchedCount = Number(result.matchedCount || 0);
       const actionableCount = Number(result.actionableCount || 0);
