@@ -129,8 +129,12 @@
 
     ui.followedCount.textContent = String(state.stats.followed);
     ui.commentedCount.textContent = String(state.stats.commented);
-    ui.plannedFollowCount.textContent = String(state.stats.plannedFollows);
-    ui.plannedCommentCount.textContent = String(state.stats.plannedComments);
+    if (ui.plannedFollowCount) {
+      ui.plannedFollowCount.textContent = String(state.stats.plannedFollows);
+    }
+    if (ui.plannedCommentCount) {
+      ui.plannedCommentCount.textContent = String(state.stats.plannedComments);
+    }
   }
 
   async function saveStats() {
@@ -696,9 +700,6 @@
           gap: 10px;
           min-width: 0;
           min-height: 0;
-          overflow: auto;
-          padding-right: 4px;
-          scrollbar-gutter: stable;
         }
         .xta-controls > .xta-card {
           flex-shrink: 0;
@@ -940,8 +941,6 @@
               <div class="xta-metrics">
                 <div class="xta-metric"><span>已关注</span><strong class="xta-followed">0</strong></div>
                 <div class="xta-metric"><span>已评论</span><strong class="xta-commented">0</strong></div>
-                <div class="xta-metric"><span>计划关注</span><strong class="xta-planned-follow">0</strong></div>
-                <div class="xta-metric"><span>计划评论</span><strong class="xta-planned-comment">0</strong></div>
               </div>
             </section>
           </div>
@@ -981,8 +980,6 @@
     ui.loopInterval = shadow.querySelector('.xta-loop-interval');
     ui.followedCount = shadow.querySelector('.xta-followed');
     ui.commentedCount = shadow.querySelector('.xta-commented');
-    ui.plannedFollowCount = shadow.querySelector('.xta-planned-follow');
-    ui.plannedCommentCount = shadow.querySelector('.xta-planned-comment');
     ui.logList = shadow.querySelector('.xta-log-list');
     ui.logCount = shadow.querySelector('.xta-log-count');
     ui.tabs = Array.from(shadow.querySelectorAll('.xta-tab'));
