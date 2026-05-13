@@ -415,13 +415,13 @@
         }
         * { box-sizing: border-box; }
         .xta-panel {
-          width: min(760px, calc(100vw - 36px));
-          height: min(760px, calc(100vh - 108px));
+          width: min(920px, calc(100vw - 40px));
+          height: min(820px, calc(100vh - 88px));
           overflow: hidden;
           display: flex;
           flex-direction: column;
-          gap: 10px;
-          padding: 14px;
+          gap: 12px;
+          padding: 16px;
           border: 1px solid var(--border);
           border-radius: 8px;
           background: var(--bg);
@@ -525,12 +525,12 @@
           border: 1px solid var(--border);
           border-radius: 8px;
           background: var(--surface);
-          padding: 10px;
+          padding: 12px;
         }
         .xta-row {
           display: grid;
-          grid-template-columns: 1fr 112px;
-          gap: 10px;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
           align-items: end;
         }
         .xta-settings-row {
@@ -538,7 +538,7 @@
         }
         .xta-field {
           display: grid;
-          gap: 5px;
+          gap: 6px;
         }
         .xta-field span,
         .xta-check span {
@@ -561,8 +561,8 @@
         }
         .xta-input {
           width: 100%;
-          min-height: 40px;
-          padding: 8px 10px;
+          min-height: 42px;
+          padding: 9px 11px;
           border: 1px solid var(--border);
           border-radius: 6px;
           outline: none;
@@ -579,14 +579,14 @@
         }
         .xta-checks {
           display: grid;
-          gap: 8px;
+          gap: 10px;
         }
         .xta-check {
-          min-height: 38px;
+          min-height: 42px;
           display: flex;
           align-items: center;
           gap: 9px;
-          padding: 7px 8px;
+          padding: 9px 10px;
           border: 1px solid rgba(255, 255, 255, 0.07);
           border-radius: 6px;
           background: #121618;
@@ -600,7 +600,7 @@
         .xta-actions {
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 8px;
+          gap: 10px;
         }
         .xta-button {
           min-height: 44px;
@@ -639,12 +639,12 @@
         }
         .xta-metrics {
           display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 8px;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 10px;
         }
         .xta-metric {
-          min-height: 58px;
-          padding: 8px;
+          min-height: 64px;
+          padding: 10px;
           border: 1px solid rgba(255, 255, 255, 0.07);
           border-radius: 6px;
           background: #121618;
@@ -658,7 +658,7 @@
         .xta-metric strong {
           display: block;
           margin-top: 2px;
-          font-size: 20px;
+          font-size: 22px;
           line-height: 1.15;
         }
         .xta-metrics-card {
@@ -684,8 +684,8 @@
         }
         .xta-body {
           display: grid;
-          grid-template-columns: 260px minmax(0, 1fr);
-          gap: 10px;
+          grid-template-columns: 320px minmax(0, 1fr);
+          gap: 12px;
           flex: 1;
           min-height: 0;
           align-items: stretch;
@@ -693,11 +693,11 @@
         .xta-controls {
           display: flex;
           flex-direction: column;
-          gap: 8px;
+          gap: 10px;
           min-width: 0;
           min-height: 0;
           overflow: auto;
-          padding-right: 2px;
+          padding-right: 4px;
           scrollbar-gutter: stable;
         }
         .xta-controls > .xta-card {
@@ -716,7 +716,7 @@
           overflow: auto;
           display: flex;
           flex-direction: column;
-          gap: 7px;
+          gap: 8px;
           padding-right: 2px;
         }
         .xta-empty {
@@ -727,7 +727,7 @@
           text-align: center;
         }
         .xta-log {
-          padding: 8px;
+          padding: 9px;
           border-left: 3px solid var(--cyan);
           border-radius: 6px;
           background: #121618;
@@ -738,7 +738,7 @@
         .xta-log-main {
           display: grid;
           grid-template-columns: 74px minmax(0, 1fr);
-          gap: 7px;
+          gap: 8px;
         }
         .xta-log-main span {
           color: var(--muted);
