@@ -1,5 +1,10 @@
 # X 互关助手
 
+## 项目导航
+
+- 中文版本：[x-huguanzhushou](https://github.com/fangdididi/x-huguanzhushou)
+- 英文版本：[X-Mutual-Follow-Assistant](https://github.com/fangdididi/X-Mutual-Follow-Assistant)
+
 一个用于 X.com 的 Chrome MV3 本地插件。插件会在当前页面显示可拖动控制窗口，访问实时搜索结果，抓取页面真实 `SearchTimeline` 响应，筛选包含关键词的帖子，并按设置判断是否需要关注和评论。
 
 ## 功能
