@@ -483,25 +483,29 @@
         .xta-tabs {
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 6px;
-          padding: 4px;
+          align-self: flex-start;
+          width: min(360px, 100%);
+          gap: 4px;
+          padding: 2px;
           border: 1px solid var(--border);
-          border-radius: 8px;
+          border-radius: 7px;
           background: #0e1112;
         }
         .xta-tab {
-          min-height: 38px;
+          min-height: 32px;
           border: 1px solid transparent;
-          border-radius: 6px;
+          border-radius: 5px;
           background: transparent;
           color: var(--muted);
           cursor: pointer;
           font: inherit;
-          font-size: 13px;
+          font-size: 12px;
           font-weight: 700;
           line-height: 1.25;
-          padding: 6px 8px;
-          overflow-wrap: anywhere;
+          padding: 4px 8px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
         .xta-tab:hover {
           color: var(--text);
@@ -656,6 +660,12 @@
           margin-top: 2px;
           font-size: 20px;
           line-height: 1.15;
+        }
+        .xta-metrics-card {
+          margin-top: auto;
+          position: sticky;
+          bottom: 0;
+          z-index: 1;
         }
         .xta-log-head {
           display: flex;
@@ -878,15 +888,6 @@
         <div class="xta-body xta-tab-panel" id="xta-tab-assistant" role="tabpanel" aria-labelledby="xta-tab-assistant-button" data-tab-panel="assistant">
           <div class="xta-controls">
             <section class="xta-card">
-              <div class="xta-metrics">
-                <div class="xta-metric"><span>已关注</span><strong class="xta-followed">0</strong></div>
-                <div class="xta-metric"><span>已评论</span><strong class="xta-commented">0</strong></div>
-                <div class="xta-metric"><span>计划关注</span><strong class="xta-planned-follow">0</strong></div>
-                <div class="xta-metric"><span>计划评论</span><strong class="xta-planned-comment">0</strong></div>
-              </div>
-            </section>
-
-            <section class="xta-card">
               <div class="xta-row xta-settings-row">
                 <label class="xta-field">
                   <span>命中关键词</span>
@@ -932,6 +933,15 @@
                 <button class="xta-button danger xta-stop" type="button" disabled>停止</button>
                 <button class="xta-button secondary xta-reset" type="button">重置统计</button>
                 <button class="xta-button secondary xta-clear" type="button">清空日志</button>
+              </div>
+            </section>
+
+            <section class="xta-card xta-metrics-card">
+              <div class="xta-metrics">
+                <div class="xta-metric"><span>已关注</span><strong class="xta-followed">0</strong></div>
+                <div class="xta-metric"><span>已评论</span><strong class="xta-commented">0</strong></div>
+                <div class="xta-metric"><span>计划关注</span><strong class="xta-planned-follow">0</strong></div>
+                <div class="xta-metric"><span>计划评论</span><strong class="xta-planned-comment">0</strong></div>
               </div>
             </section>
           </div>
