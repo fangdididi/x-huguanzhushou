@@ -1,0 +1,401 @@
+:root {
+  --bg: #111315;
+  --surface: #191d20;
+  --surface-2: #20262a;
+  --border: #31383d;
+  --text: #f5f7f8;
+  --muted: #9ba7ad;
+  --accent: #41d67b;
+  --accent-strong: #24b764;
+  --cyan: #62c7e8;
+  --amber: #f4b95f;
+  --danger: #f06b6b;
+  --shadow: 0 16px 32px rgba(0, 0, 0, 0.32);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  width: 420px;
+  min-height: 620px;
+  margin: 0;
+  color: var(--text);
+  background: var(--bg);
+  font-family: Inter, "Fira Sans", "Segoe UI", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+h2 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  text-transform: uppercase;
+}
+
+.page-status {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.mode-pill,
+.muted-pill,
+.state-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--surface);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mode-pill {
+  border-color: rgba(65, 214, 123, 0.48);
+  color: var(--accent);
+}
+
+.panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.panel .copy {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+}
+
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.state-dot.running {
+  color: var(--cyan);
+  border-color: rgba(98, 199, 232, 0.48);
+}
+
+.state-dot.done {
+  color: var(--accent);
+  border-color: rgba(65, 214, 123, 0.48);
+}
+
+.state-dot.error {
+  color: var(--danger);
+  border-color: rgba(240, 107, 107, 0.48);
+}
+
+.field,
+.field-grid {
+  display: grid;
+  gap: 6px;
+}
+
+.field span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  background: #0f1113;
+  outline: none;
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 58px;
+  max-height: 110px;
+  font-family: "Fira Code", Consolas, monospace;
+  font-size: 12px;
+}
+
+.field input:focus,
+.field textarea:focus,
+.button:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(65, 214, 123, 0.2);
+}
+
+.field-grid {
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.action-row {
+  display: grid;
+  grid-template-columns: 1fr 132px;
+  gap: 10px;
+}
+
+.action-row.single {
+  grid-template-columns: 1fr;
+}
+
+.button {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: transform 160ms ease, background-color 160ms ease, border-color 160ms ease, opacity 160ms ease;
+}
+
+.button svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.button:hover {
+  transform: translateY(-1px);
+}
+
+.button:active {
+  transform: translateY(0);
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+  transform: none;
+}
+
+.primary {
+  color: #07110b;
+  background: var(--accent);
+}
+
+.primary:hover {
+  background: var(--accent-strong);
+}
+
+.secondary {
+  color: var(--text);
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.metric {
+  min-height: 70px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.metric span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.metric strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.results,
+.log-panel {
+  padding: 12px;
+}
+
+.candidate-list,
+.log-list {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: auto;
+}
+
+.candidate-list {
+  max-height: 190px;
+}
+
+.log-list {
+  max-height: 220px;
+  font-family: "Fira Code", Consolas, monospace;
+  font-size: 12px;
+}
+
+.empty {
+  padding: 14px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.candidate {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #141719;
+}
+
+.candidate-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.candidate-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+.candidate-meta,
+.candidate-text,
+.log-details {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.candidate-text {
+  color: #d8dee2;
+}
+
+.status-badge {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: var(--accent);
+  background: rgba(65, 214, 123, 0.12);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.status-badge.skip {
+  color: var(--amber);
+  background: rgba(244, 185, 95, 0.12);
+}
+
+.log-row {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  border-left: 3px solid var(--border);
+  border-radius: 6px;
+  background: #141719;
+}
+
+.log-row.success {
+  border-left-color: var(--accent);
+}
+
+.log-row.warn {
+  border-left-color: var(--amber);
+}
+
+.log-row.error {
+  border-left-color: var(--danger);
+}
+
+.log-row.info {
+  border-left-color: var(--cyan);
+}
+
+.log-main {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 8px;
+}
+
+.log-time {
+  color: var(--muted);
+}
+
+.log-message {
+  color: var(--text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button {
+    transition: none;
+  }
+
+  .button:hover,
+  .button:active {
+    transform: none;
+  }
+}

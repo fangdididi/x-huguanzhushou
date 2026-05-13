@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>X 互关助手</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>X 互关助手</h1>
+          <p id="pageStatus" class="page-status">正在检查当前标签页</p>
+        </div>
+        <span class="mode-pill">页面窗口</span>
+      </header>
+
+      <section class="panel">
+        <p class="copy">控制窗口会显示在当前 x.com 页面上，可拖动、收起为圆形图标。关键词和评论文件可在页面窗口中设置并记忆，默认测试模式不会实际关注和评论。</p>
+        <div class="action-row single">
+          <button id="showPanelButton" class="button primary" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 5h16v14H4z"></path>
+              <path d="M8 9h8M8 13h5"></path>
+            </svg>
+            <span>显示页面窗口</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="panel log-panel" aria-labelledby="logsTitle">
+        <div class="section-heading">
+          <h2 id="logsTitle">最近日志</h2>
+          <span id="logCount" class="muted-pill">0 / 500</span>
+        </div>
+        <div id="logList" class="log-list" aria-live="polite"></div>
+      </section>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
