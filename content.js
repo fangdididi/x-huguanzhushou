@@ -1121,14 +1121,14 @@
           }
         }
       </style>
-        <div class="xta-panel" role="region" aria-label="互关助手控制窗口">
+        <div class="xta-panel is-collapsed" role="region" aria-label="互关助手控制窗口">
           <header class="xta-head">
             <div>
               <h1 class="xta-title">互关助手</h1>
             </div>
           <div class="xta-head-actions">
             <span class="xta-status" data-tone="idle">待机</span>
-            <button class="xta-button secondary xta-toggle" type="button" aria-expanded="true">收起</button>
+            <button class="xta-button secondary xta-toggle" type="button" aria-expanded="false" aria-label="展开面板"><img class="xta-x-logo" src="https://abs.twimg.com/favicons/twitter.3.ico" alt="" draggable="false"></button>
           </div>
         </header>
 
@@ -1365,8 +1365,8 @@
     };
 
     ui.toggleButton.addEventListener('click', onTogglePanel);
-    updatePanelCollapsed(false);
-    ui.toggleButton.setAttribute('aria-label', '收起面板');
+    updatePanelCollapsed(true);
+    ui.toggleButton.setAttribute('aria-label', '展开面板');
 
     let isDragging = false;
     let dragPointerId = null;
@@ -1691,6 +1691,28 @@
     };
   }
 
+  function normalizeTargetCheckOptions(options = {}) {
+    return {
+      pageMode: ['latest', 'all', 'custom'].includes(options.pageMode) ? options.pageMode : 'latest',
+      processMode: options.processMode === 'unfollow-all' ? 'unfollow-all' : 'none',
+      customPages: normalizeInteger(options.customPages, DEFAULT_SETTINGS.targetCustomPages, 1)
+    };
+  }
+
+  function getTargetPageLabel(options) {
+    if (options.pageMode === 'latest') {
+      return '最新1页';
+    }
+    if (options.pageMode === 'all') {
+      return '全部页数';
+    }
+    return options.customPages;
+  }
+
+  function getTargetProcessLabel(options) {
+    return options.processMode === 'unfollow-all' ? '全部取消关注' : '不处理';
+  }
+
   function randomJitterSeconds(baseSeconds) {
     const offset = Math.floor(Math.random() * 201) - 100;
     return Math.max(1, baseSeconds + offset);
@@ -1779,6 +1801,11 @@
     const pendingRun = stored[PENDING_RUN_KEY];
 
     if (!pendingRun?.active || !location.hostname.endsWith('x.com')) {
+      return;
+    }
+
+    if (pendingRun.task === 'target') {
+      await runTargetCheckFromPending(pendingRun, true);
       return;
     }
 
@@ -1956,24 +1983,39 @@
       return;
     }
 
-    const options = readTargetCheckOptions();
+    const options = normalizeTargetCheckOptions(readTargetCheckOptions());
+    const pendingRun = {
+      active: true,
+      task: 'target',
+      options,
+      createdAt: Date.now()
+    };
+
+    await saveSettings(readSettingsFromUi());
+    await savePendingRun(pendingRun);
+    await runTargetCheckFromPending(pendingRun, false);
+  }
+
+  async function runTargetCheckFromPending(pendingRun, resumed) {
+    const options = normalizeTargetCheckOptions(pendingRun.options || {});
     state.running = true;
     state.stopping = false;
     state.activeTask = 'target';
     state.targetStats = defaultTargetStats();
     renderTargetStats();
+    applySettings({
+      ...state.settings,
+      targetPageMode: options.pageMode,
+      targetProcessMode: options.processMode,
+      targetCustomPages: options.customPages
+    });
     updateButtons();
     setStatus('正在检测已关注目标', 'running');
 
     try {
-      await saveSettings(readSettingsFromUi());
-      await appendTargetLog('info', '已关注目标检测开始', {
-        检测页数: options.pageMode === 'latest'
-          ? '最新1页'
-          : options.pageMode === 'all'
-            ? '全部页数'
-            : options.customPages,
-        处理模式: options.processMode === 'unfollow-all' ? '全部取消关注' : '不处理'
+      await appendTargetLog(resumed ? 'warn' : 'info', resumed ? '页面刷新后恢复已关注目标检测' : '已关注目标检测开始', {
+        检测页数: getTargetPageLabel(options),
+        处理模式: getTargetProcessLabel(options)
       });
 
       const result = await sendPageRequest('RUN_TARGET_CHECK', options, 60 * 60 * 1000);
@@ -1994,7 +2036,9 @@
         未关注我: result.notFollowedByCount,
         已取消关注: result.unfollowedCount
       });
+      await clearPendingRun();
     } catch (error) {
+      await clearPendingRun();
       setStatus('检测错误', 'error');
       await appendTargetLog('error', String(error?.message || error || '未知错误'), {});
     } finally {

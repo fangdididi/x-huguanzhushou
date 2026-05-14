@@ -176,6 +176,21 @@
     }
   }
 
+  function removeTimelineWaiter(waiter) {
+    const index = timelineWaiters.indexOf(waiter);
+    if (index >= 0) {
+      timelineWaiters.splice(index, 1);
+    }
+  }
+
+  function stopTimelineWaiters() {
+    while (timelineWaiters.length > 0) {
+      const waiter = timelineWaiters.shift();
+      log(waiter.runId, 'warn', '已停止等待 SearchTimeline 响应', {});
+      waiter.resolve(null);
+    }
+  }
+
   function installTimelineCapture() {
     if (window.__xtaTimelineCaptureInstalled) {
       return;
@@ -605,6 +620,11 @@
       来源: '访问 X 实时搜索页后的页面请求'
     });
 
+    if (stopRequested) {
+      log(runId, 'warn', '已停止等待 SearchTimeline 响应', {});
+      return null;
+    }
+
     if (capturedTimeline) {
       log(runId, 'success', '使用已捕获的 SearchTimeline 响应', {
         状态码: capturedTimeline.status
@@ -613,17 +633,26 @@
     }
 
     return new Promise((resolve, reject) => {
-      const timeoutId = window.setTimeout(() => {
-        reject(new Error('等待 SearchTimeline 抓包响应超时'));
+      const waiter = {
+        runId,
+        timeoutId: 0,
+        resolve: (timeline) => {
+          window.clearTimeout(waiter.timeoutId);
+          removeTimelineWaiter(waiter);
+          resolve(timeline ? timeline.json : null);
+        },
+        reject: (error) => {
+          window.clearTimeout(waiter.timeoutId);
+          removeTimelineWaiter(waiter);
+          reject(error);
+        }
+      };
+
+      waiter.timeoutId = window.setTimeout(() => {
+        waiter.reject(new Error('等待 SearchTimeline 抓包响应超时'));
       }, 60000);
 
-      timelineWaiters.push({
-        resolve: (timeline) => {
-          window.clearTimeout(timeoutId);
-          resolve(timeline.json);
-        },
-        reject
-      });
+      timelineWaiters.push(waiter);
     });
   }
 
@@ -1057,6 +1086,16 @@
       });
 
       const timeline = await waitForTimelineCapture(runId);
+      if (!timeline || stopRequested) {
+        return {
+          stopped: true,
+          entriesCount: 0,
+          matchedCount: 0,
+          actionableCount: 0,
+          ...counters
+        };
+      }
+
       const afterCaptureWaitSeconds = randomSeconds(
         AFTER_TIMELINE_CAPTURE_MIN_SECONDS,
         AFTER_TIMELINE_CAPTURE_MAX_SECONDS
@@ -1157,6 +1196,7 @@
 
     if (type === 'STOP') {
       stopRequested = true;
+      stopTimelineWaiters();
       return;
     }
 
@@ -1171,7 +1211,6 @@
       post('RESULT', runId, { result });
     } catch (error) {
       running = false;
-      log(runId, 'error', error.message, {});
       post('ERROR', runId, { error: error.message });
     }
   });
