@@ -10,7 +10,11 @@
   const TO_PAGE_SOURCE = 'xta-content';
   const FROM_PAGE_SOURCE = 'xta-page';
   const LOG_LIMIT = 500;
+  const LOG_RENDER_LIMIT = 80;
+  const COUNTDOWN_STATUS_INTERVAL_SECONDS = 10;
+  const PAGE_REFRESH_EVERY_ROUNDS = 5;
   const LOG_KEY = 'xtlLogs';
+  const TARGET_LOG_KEY = 'xtaTargetLogs';
   const STATS_KEY = 'xtaStats';
   const PENDING_RUN_KEY = 'xtaPendingRun';
   const SETTINGS_KEY = 'xtaSettings';
@@ -22,7 +26,10 @@
     testMode: true,
     onlyBlueVerified: false,
     loopCount: 1,
-    intervalSeconds: 300
+    intervalSeconds: 300,
+    targetPageMode: 'latest',
+    targetProcessMode: 'none',
+    targetCustomPages: 3
   };
 
   const pendingRuns = new Map();
@@ -30,7 +37,10 @@
     running: false,
     stopping: false,
     loopIndex: 0,
+    activeTask: '',
+    activeTab: 'assistant',
     logs: [],
+    targetLogs: [],
     settings: {
       ...DEFAULT_SETTINGS
     },
@@ -44,6 +54,11 @@
       commented: 0,
       plannedFollows: 0,
       plannedComments: 0
+    },
+    targetStats: {
+      checked: 0,
+      notFollowedBy: 0,
+      unfollowed: 0
     }
   };
 
@@ -55,6 +70,14 @@
       commented: 0,
       plannedFollows: 0,
       plannedComments: 0
+    };
+  }
+
+  function defaultTargetStats() {
+    return {
+      checked: 0,
+      notFollowedBy: 0,
+      unfollowed: 0
     };
   }
 
@@ -86,12 +109,30 @@
 
   async function appendLog(level, message, details = {}) {
     const log = nowLog(level, message, details);
-    state.logs.push(log);
-    state.logs = state.logs.slice(-LOG_LIMIT);
-    renderLogs();
+    storeLog('logs', log);
+    if (state.activeTab === 'assistant') {
+      appendRenderedLog(ui.logList, ui.logCount, state.logs, log);
+    } else {
+      updateLogCount(ui.logCount, state.logs);
+    }
 
     await sendRuntimeMessage({
       type: 'XTL_APPEND_LOG',
+      log
+    });
+  }
+
+  async function appendTargetLog(level, message, details = {}) {
+    const log = nowLog(level, message, details);
+    storeLog('targetLogs', log);
+    if (state.activeTab === 'target-check') {
+      appendRenderedLog(ui.targetLogList, ui.targetLogCount, state.targetLogs, log);
+    } else {
+      updateLogCount(ui.targetLogCount, state.targetLogs);
+    }
+
+    await sendRuntimeMessage({
+      type: 'XTL_APPEND_TARGET_LOG',
       log
     });
   }
@@ -111,6 +152,17 @@
 
     const text = JSON.stringify(details);
     return text.length > 180 ? `${text.slice(0, 180)}...` : text;
+  }
+
+  function storeLog(key, log) {
+    const logs = Array.isArray(state[key]) ? state[key] : [];
+    if (log?.id && logs.some((item) => item.id === log.id)) {
+      return false;
+    }
+
+    logs.push(log);
+    state[key] = logs.slice(-LOG_LIMIT);
+    return true;
   }
 
   function setStatus(text, tone = 'idle') {
@@ -135,6 +187,16 @@
     if (ui.plannedCommentCount) {
       ui.plannedCommentCount.textContent = String(state.stats.plannedComments);
     }
+  }
+
+  function renderTargetStats() {
+    if (!ui.targetCheckedCount) {
+      return;
+    }
+
+    ui.targetCheckedCount.textContent = String(state.targetStats.checked);
+    ui.targetNotFollowedByCount.textContent = String(state.targetStats.notFollowedBy);
+    ui.targetUnfollowedCount.textContent = String(state.targetStats.unfollowed);
   }
 
   async function saveStats() {
@@ -166,6 +228,23 @@
     saveStats();
   }
 
+  function applyTargetStatsDelta(delta = {}) {
+    const nextDelta = {
+      checked: normalizeStatsCount(delta.checked),
+      notFollowedBy: normalizeStatsCount(delta.notFollowedBy),
+      unfollowed: normalizeStatsCount(delta.unfollowed)
+    };
+
+    if (!nextDelta.checked && !nextDelta.notFollowedBy && !nextDelta.unfollowed) {
+      return;
+    }
+
+    state.targetStats.checked += nextDelta.checked;
+    state.targetStats.notFollowedBy += nextDelta.notFollowedBy;
+    state.targetStats.unfollowed += nextDelta.unfollowed;
+    renderTargetStats();
+  }
+
   function normalizeSetting(value, fallback) {
     const text = String(value || '').trim();
     return text || fallback;
@@ -181,6 +260,8 @@
   }
 
   function readSettingsFromUi() {
+    const targetOptions = readTargetCheckOptions();
+
     return {
       keyword: normalizeSetting(ui.keyword?.value, DEFAULT_SETTINGS.keyword),
       commentFileName: normalizeSetting(state.commentFileCache.name, state.settings.commentFileName || ''),
@@ -188,7 +269,10 @@
       testMode: Boolean(ui.testMode?.checked ?? DEFAULT_SETTINGS.testMode),
       onlyBlueVerified: Boolean(ui.onlyBlue?.checked ?? DEFAULT_SETTINGS.onlyBlueVerified),
       loopCount: normalizeInteger(ui.loopCount?.value, DEFAULT_SETTINGS.loopCount, 0),
-      intervalSeconds: normalizeInteger(ui.loopInterval?.value, DEFAULT_SETTINGS.intervalSeconds, 1)
+      intervalSeconds: normalizeInteger(ui.loopInterval?.value, DEFAULT_SETTINGS.intervalSeconds, 1),
+      targetPageMode: targetOptions.pageMode,
+      targetProcessMode: targetOptions.processMode,
+      targetCustomPages: targetOptions.customPages
     };
   }
 
@@ -214,7 +298,14 @@
       testMode: normalizeBoolean(settings?.testMode, DEFAULT_SETTINGS.testMode),
       onlyBlueVerified: normalizeBoolean(settings?.onlyBlueVerified, DEFAULT_SETTINGS.onlyBlueVerified),
       loopCount: normalizeInteger(settings?.loopCount, DEFAULT_SETTINGS.loopCount, 0),
-      intervalSeconds: normalizeInteger(settings?.intervalSeconds, DEFAULT_SETTINGS.intervalSeconds, 1)
+      intervalSeconds: normalizeInteger(settings?.intervalSeconds, DEFAULT_SETTINGS.intervalSeconds, 1),
+      targetPageMode: ['latest', 'all', 'custom'].includes(settings?.targetPageMode)
+        ? settings.targetPageMode
+        : DEFAULT_SETTINGS.targetPageMode,
+      targetProcessMode: settings?.targetProcessMode === 'unfollow-all'
+        ? 'unfollow-all'
+        : DEFAULT_SETTINGS.targetProcessMode,
+      targetCustomPages: normalizeInteger(settings?.targetCustomPages, DEFAULT_SETTINGS.targetCustomPages, 1)
     };
     state.settings = nextSettings;
 
@@ -236,6 +327,20 @@
     if (ui.loopInterval) {
       ui.loopInterval.value = String(nextSettings.intervalSeconds);
     }
+    const root = getPanelRoot();
+    const targetPage = root.querySelector(`input[name="xta-target-pages"][value="${nextSettings.targetPageMode}"]`);
+    const targetMode = root.querySelector(`input[name="xta-target-mode"][value="${nextSettings.targetProcessMode}"]`);
+    const targetCustomPages = root.querySelector('.xta-target-custom-pages');
+    if (targetPage) {
+      targetPage.checked = true;
+    }
+    if (targetMode) {
+      targetMode.checked = true;
+    }
+    if (targetCustomPages) {
+      targetCustomPages.value = String(nextSettings.targetCustomPages);
+    }
+    updateTargetCustomPagesState();
 
     renderCommentFileState();
   }
@@ -248,7 +353,18 @@
       testMode: normalizeBoolean(settings?.testMode ?? state.settings.testMode, DEFAULT_SETTINGS.testMode),
       onlyBlueVerified: normalizeBoolean(settings?.onlyBlueVerified ?? state.settings.onlyBlueVerified, DEFAULT_SETTINGS.onlyBlueVerified),
       loopCount: normalizeInteger(settings?.loopCount ?? state.settings.loopCount, DEFAULT_SETTINGS.loopCount, 0),
-      intervalSeconds: normalizeInteger(settings?.intervalSeconds ?? state.settings.intervalSeconds, DEFAULT_SETTINGS.intervalSeconds, 1)
+      intervalSeconds: normalizeInteger(settings?.intervalSeconds ?? state.settings.intervalSeconds, DEFAULT_SETTINGS.intervalSeconds, 1),
+      targetPageMode: ['latest', 'all', 'custom'].includes(settings?.targetPageMode ?? state.settings.targetPageMode)
+        ? (settings?.targetPageMode ?? state.settings.targetPageMode)
+        : DEFAULT_SETTINGS.targetPageMode,
+      targetProcessMode: (settings?.targetProcessMode ?? state.settings.targetProcessMode) === 'unfollow-all'
+        ? 'unfollow-all'
+        : DEFAULT_SETTINGS.targetProcessMode,
+      targetCustomPages: normalizeInteger(
+        settings?.targetCustomPages ?? state.settings.targetCustomPages,
+        DEFAULT_SETTINGS.targetCustomPages,
+        1
+      )
     };
 
     await chrome.storage.local.set({
@@ -330,48 +446,106 @@
     window.location.assign(searchUrl);
   }
 
-  function renderLogs() {
-    if (!ui.logList) {
+  async function logPeriodicPageRefreshIfNeeded() {
+    if (state.loopIndex <= 0 || state.loopIndex % PAGE_REFRESH_EVERY_ROUNDS !== 0) {
       return;
     }
 
-    ui.logCount.textContent = `${state.logs.length} / ${LOG_LIMIT}`;
-    ui.logList.replaceChildren();
+    await appendLog('info', '达到定期刷新轮次，重新访问页面释放 X 页面资源', {
+      已完成次数: state.loopIndex,
+      刷新间隔轮次: PAGE_REFRESH_EVERY_ROUNDS
+    });
+  }
 
-    if (state.logs.length === 0) {
+  function updateLogCount(logCount, logs) {
+    const safeLogs = Array.isArray(logs) ? logs : [];
+    if (logCount) {
+      logCount.textContent = `${safeLogs.length} / ${LOG_LIMIT}`;
+    }
+  }
+
+  function createLogRow(log) {
+    const row = document.createElement('div');
+    row.className = `xta-log ${log.level || 'info'}`;
+
+    const main = document.createElement('div');
+    main.className = 'xta-log-main';
+
+    const time = document.createElement('span');
+    time.textContent = formatTime(log.ts);
+
+    const msg = document.createElement('strong');
+    msg.textContent = log.message || '';
+
+    main.append(time, msg);
+    row.append(main);
+
+    const details = formatDetails(log.details);
+    if (details) {
+      const detailEl = document.createElement('div');
+      detailEl.className = 'xta-log-detail';
+      detailEl.textContent = details;
+      row.append(detailEl);
+    }
+
+    return row;
+  }
+
+  function appendRenderedLog(logList, logCount, logs, log) {
+    updateLogCount(logCount, logs);
+    if (!logList) {
+      return;
+    }
+
+    const empty = logList.querySelector('.xta-empty');
+    if (empty) {
+      empty.remove();
+    }
+
+    logList.prepend(createLogRow(log));
+    while (logList.children.length > LOG_RENDER_LIMIT) {
+      logList.lastElementChild?.remove();
+    }
+  }
+
+  function renderLogList(logList, logCount, logs, emptyText) {
+    updateLogCount(logCount, logs);
+    if (!logList) {
+      return;
+    }
+
+    const safeLogs = Array.isArray(logs) ? logs : [];
+    logList.replaceChildren();
+
+    if (safeLogs.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'xta-empty';
-      empty.textContent = '暂无日志';
-      ui.logList.append(empty);
+      empty.textContent = emptyText;
+      logList.append(empty);
       return;
     }
 
-    for (const log of state.logs.slice().reverse().slice(0, 80)) {
-      const row = document.createElement('div');
-      row.className = `xta-log ${log.level || 'info'}`;
-
-      const main = document.createElement('div');
-      main.className = 'xta-log-main';
-
-      const time = document.createElement('span');
-      time.textContent = formatTime(log.ts);
-
-      const msg = document.createElement('strong');
-      msg.textContent = log.message || '';
-
-      main.append(time, msg);
-      row.append(main);
-
-      const details = formatDetails(log.details);
-      if (details) {
-        const detailEl = document.createElement('div');
-        detailEl.className = 'xta-log-detail';
-        detailEl.textContent = details;
-        row.append(detailEl);
-      }
-
-      ui.logList.append(row);
+    for (const log of safeLogs.slice().reverse().slice(0, LOG_RENDER_LIMIT)) {
+      logList.append(createLogRow(log));
     }
+  }
+
+  function renderLogs() {
+    if (state.activeTab !== 'assistant') {
+      updateLogCount(ui.logCount, state.logs);
+      return;
+    }
+
+    renderLogList(ui.logList, ui.logCount, state.logs, '暂无日志');
+  }
+
+  function renderTargetLogs() {
+    if (state.activeTab !== 'target-check') {
+      updateLogCount(ui.targetLogCount, state.targetLogs);
+      return;
+    }
+
+    renderLogList(ui.targetLogList, ui.targetLogCount, state.targetLogs, '暂无检测日志');
   }
 
   function updateButtons() {
@@ -383,6 +557,12 @@
     ui.stopButton.disabled = !state.running || state.stopping;
     ui.resetButton.disabled = state.running;
     ui.clearButton.disabled = state.running;
+    if (ui.targetStartButton) {
+      ui.targetStartButton.disabled = state.running;
+    }
+    if (ui.targetStopButton) {
+      ui.targetStopButton.disabled = !state.running || state.stopping;
+    }
   }
 
   function createPanel() {
@@ -601,6 +781,88 @@
           height: 18px;
           accent-color: var(--green);
         }
+        .xta-option-group {
+          display: grid;
+          gap: 10px;
+        }
+        .xta-option-title {
+          margin: 0;
+          color: var(--text);
+          font-size: 13px;
+          font-weight: 800;
+        }
+        .xta-target-options-card {
+          display: grid;
+          gap: 10px;
+        }
+        .xta-target-option-block {
+          display: grid;
+          gap: 7px;
+        }
+        .xta-target-choice-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 6px;
+        }
+        .xta-target-choice-grid.two {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .xta-target-choice {
+          min-height: 34px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 6px 8px;
+          border: 1px solid rgba(255, 255, 255, 0.07);
+          border-radius: 6px;
+          background: #121618;
+          cursor: pointer;
+        }
+        .xta-target-choice input {
+          position: absolute;
+          opacity: 0;
+          pointer-events: none;
+        }
+        .xta-target-choice span {
+          max-width: 100%;
+          color: var(--muted);
+          font-size: 12px;
+          font-weight: 700;
+          line-height: 1.2;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .xta-target-choice:has(input:checked) {
+          border-color: rgba(65, 214, 123, 0.58);
+          background: rgba(65, 214, 123, 0.16);
+        }
+        .xta-target-choice:has(input:checked) span {
+          color: var(--text);
+        }
+        .xta-target-inline-field {
+          grid-template-columns: 86px minmax(0, 1fr);
+          align-items: center;
+          gap: 8px;
+        }
+        .xta-target-inline-field .xta-input {
+          min-height: 36px;
+          padding: 7px 10px;
+        }
+        .xta-target-inline-field.is-disabled span {
+          opacity: 0.55;
+        }
+        .xta-target-inline-field .xta-input:disabled {
+          cursor: not-allowed;
+          opacity: 0.58;
+          background: #111517;
+        }
+        .xta-target-note {
+          margin-top: 2px;
+        }
+        .xta-target-actions-card {
+          order: -1;
+        }
         .xta-actions {
           display: grid;
           grid-template-columns: 1fr 1fr;
@@ -670,6 +932,12 @@
           position: sticky;
           bottom: 0;
           z-index: 1;
+        }
+        .xta-target-metrics {
+          grid-template-columns: 1fr;
+        }
+        .xta-target-metrics .xta-metric {
+          min-height: 54px;
         }
         .xta-log-head {
           display: flex;
@@ -758,23 +1026,6 @@
           color: var(--muted);
           font-size: 12px;
           overflow-wrap: anywhere;
-        }
-        .xta-coming-soon {
-          flex: 1;
-          min-height: 0;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          text-align: center;
-        }
-        .xta-coming-soon strong {
-          font-size: 18px;
-        }
-        .xta-coming-soon span {
-          color: var(--muted);
-          font-size: 14px;
         }
         @media (max-width: 760px) {
           .xta-panel {
@@ -950,13 +1201,74 @@
               <strong>操作日志</strong>
               <span class="xta-log-count">0 / 500</span>
             </div>
-            <div class="xta-log-list"></div>
+            <div class="xta-log-list xta-assistant-log-list"></div>
           </section>
         </div>
-        <section class="xta-card xta-tab-panel xta-coming-soon" id="xta-tab-target-check" role="tabpanel" aria-labelledby="xta-tab-target-check-button" data-tab-panel="target-check" hidden>
-          <strong>已关注目标检测</strong>
-          <span>正在开发中，敬请期待</span>
-        </section>
+        <div class="xta-body xta-tab-panel" id="xta-tab-target-check" role="tabpanel" aria-labelledby="xta-tab-target-check-button" data-tab-panel="target-check" hidden>
+          <div class="xta-controls">
+            <section class="xta-card xta-target-actions-card">
+              <div class="xta-actions">
+                <button class="xta-button primary xta-target-start" type="button">开始检测</button>
+                <button class="xta-button danger xta-target-stop" type="button" disabled>停止</button>
+              </div>
+            </section>
+
+            <section class="xta-card xta-target-options-card">
+              <div class="xta-target-option-block">
+                <strong class="xta-option-title">检测页数</strong>
+                <div class="xta-target-choice-grid">
+                  <label class="xta-target-choice">
+                    <input type="radio" name="xta-target-pages" value="latest" checked>
+                    <span>最新1页</span>
+                  </label>
+                  <label class="xta-target-choice">
+                    <input type="radio" name="xta-target-pages" value="all">
+                    <span>全部</span>
+                  </label>
+                  <label class="xta-target-choice">
+                    <input type="radio" name="xta-target-pages" value="custom">
+                    <span>自定义</span>
+                  </label>
+                </div>
+                <label class="xta-field xta-target-inline-field">
+                  <span>自定义页数</span>
+                  <input class="xta-input xta-target-custom-pages" type="number" min="1" step="1" value="3" disabled>
+                </label>
+              </div>
+
+              <div class="xta-target-option-block">
+                <strong class="xta-option-title">处理模式</strong>
+                <div class="xta-target-choice-grid two">
+                  <label class="xta-target-choice">
+                    <input type="radio" name="xta-target-mode" value="none" checked>
+                    <span>不处理</span>
+                  </label>
+                  <label class="xta-target-choice">
+                    <input type="radio" name="xta-target-mode" value="unfollow-all">
+                    <span>全部取消关注</span>
+                  </label>
+                </div>
+                <div class="xta-help xta-target-note">取消关注间隔随机 5-10 秒。</div>
+              </div>
+            </section>
+
+            <section class="xta-card xta-metrics-card">
+              <div class="xta-metrics xta-target-metrics">
+                <div class="xta-metric"><span>已检查关注</span><strong class="xta-target-checked">0</strong></div>
+                <div class="xta-metric"><span>未关注我</span><strong class="xta-target-not-followed-by">0</strong></div>
+                <div class="xta-metric"><span>已取消关注</span><strong class="xta-target-unfollowed">0</strong></div>
+              </div>
+            </section>
+          </div>
+
+          <section class="xta-card xta-log-card">
+            <div class="xta-log-head">
+              <strong>检测日志</strong>
+              <span class="xta-log-count">0 / 500</span>
+            </div>
+            <div class="xta-log-list xta-target-log-list"></div>
+          </section>
+        </div>
       </div>
     `;
 
@@ -980,14 +1292,25 @@
     ui.loopInterval = shadow.querySelector('.xta-loop-interval');
     ui.followedCount = shadow.querySelector('.xta-followed');
     ui.commentedCount = shadow.querySelector('.xta-commented');
-    ui.logList = shadow.querySelector('.xta-log-list');
-    ui.logCount = shadow.querySelector('.xta-log-count');
+    ui.targetStartButton = shadow.querySelector('.xta-target-start');
+    ui.targetStopButton = shadow.querySelector('.xta-target-stop');
+    ui.targetCheckedCount = shadow.querySelector('.xta-target-checked');
+    ui.targetNotFollowedByCount = shadow.querySelector('.xta-target-not-followed-by');
+    ui.targetUnfollowedCount = shadow.querySelector('.xta-target-unfollowed');
+    ui.logLists = Array.from(shadow.querySelectorAll('.xta-log-list'));
+    ui.logCounts = Array.from(shadow.querySelectorAll('.xta-log-count'));
+    ui.logList = shadow.querySelector('.xta-assistant-log-list') || ui.logLists[0];
+    ui.targetLogList = shadow.querySelector('.xta-target-log-list') || ui.logLists[1];
+    ui.logCount = ui.logList?.closest('.xta-log-card')?.querySelector('.xta-log-count') || ui.logCounts[0];
+    ui.targetLogCount = ui.targetLogList?.closest('.xta-log-card')?.querySelector('.xta-log-count') || ui.logCounts[1];
     ui.tabs = Array.from(shadow.querySelectorAll('.xta-tab'));
     ui.tabPanels = Array.from(shadow.querySelectorAll('.xta-tab-panel'));
 
     const xLogoIcon = '<img class="xta-x-logo" src="https://abs.twimg.com/favicons/twitter.3.ico" alt="" draggable="false">';
 
     const activateTab = (tabName) => {
+      state.activeTab = tabName;
+
       ui.tabs.forEach((tab) => {
         const active = tab.dataset.tab === tabName;
         tab.classList.toggle('is-active', active);
@@ -998,6 +1321,12 @@
         const active = panel.dataset.tabPanel === tabName;
         panel.hidden = !active;
       });
+
+      if (tabName === 'target-check') {
+        renderTargetLogs();
+      } else {
+        renderLogs();
+      }
     };
 
     const updatePanelCollapsed = (collapsed) => {
@@ -1142,6 +1471,8 @@
 
     ui.startButton.addEventListener('click', startLoop);
     ui.stopButton.addEventListener('click', stopLoop);
+    ui.targetStartButton.addEventListener('click', startTargetCheck);
+    ui.targetStopButton.addEventListener('click', stopLoop);
     ui.resetButton.addEventListener('click', resetStats);
     ui.clearButton.addEventListener('click', clearLogs);
     ui.tabs.forEach((tab) => {
@@ -1154,6 +1485,16 @@
     [ui.loopEnabled, ui.testMode, ui.onlyBlue].forEach((element) => {
       element.addEventListener('change', saveCurrentSettings);
     });
+    shadow.querySelectorAll('input[name="xta-target-pages"]').forEach((element) => {
+      element.addEventListener('change', () => {
+        updateTargetCustomPagesState();
+        saveCurrentSettings();
+      });
+    });
+    shadow.querySelectorAll('input[name="xta-target-mode"], .xta-target-custom-pages').forEach((element) => {
+      element.addEventListener('change', saveCurrentSettings);
+    });
+    updateTargetCustomPagesState();
     ui.commentFile.addEventListener('click', () => ui.fileInput.click());
     ui.fileInput.addEventListener('change', handleCommentFileSelect);
   }
@@ -1161,12 +1502,14 @@
   async function loadPersistedState() {
     const stored = await chrome.storage.local.get({
       [LOG_KEY]: [],
+      [TARGET_LOG_KEY]: [],
       [STATS_KEY]: defaultStats(),
       [SETTINGS_KEY]: defaultSettings(),
       [COMMENT_FILE_CACHE_KEY]: defaultCommentFileCache()
     });
 
     state.logs = Array.isArray(stored[LOG_KEY]) ? stored[LOG_KEY].slice(-LOG_LIMIT) : [];
+    state.targetLogs = Array.isArray(stored[TARGET_LOG_KEY]) ? stored[TARGET_LOG_KEY].slice(-LOG_LIMIT) : [];
     state.stats = { ...defaultStats(), ...(stored[STATS_KEY] || {}) };
     state.commentFileCache = {
       ...defaultCommentFileCache(),
@@ -1174,7 +1517,9 @@
     };
     applySettings(stored[SETTINGS_KEY]);
     renderLogs();
+    renderTargetLogs();
     renderStats();
+    renderTargetStats();
   }
 
   function injectPageScript() {
@@ -1212,7 +1557,9 @@
       }, timeoutMs);
 
       pendingRuns.set(runId, {
+        type,
         statsDeltaApplied: false,
+        targetStatsDeltaApplied: false,
         resolve: (result) => {
           window.clearTimeout(timeoutId);
           pendingRuns.delete(runId);
@@ -1247,12 +1594,14 @@
     }
 
     const message = event.data;
+    const pending = pendingRuns.get(message.runId);
+
     if (message.type === 'LOG') {
-      appendLog(message.level || 'info', message.message || '', message.details || {});
+      const logFn = pending?.type === 'RUN_TARGET_CHECK' ? appendTargetLog : appendLog;
+      logFn(message.level || 'info', message.message || '', message.details || {});
       return;
     }
 
-    const pending = pendingRuns.get(message.runId);
     if (!pending) {
       return;
     }
@@ -1263,10 +1612,17 @@
       return;
     }
 
+    if (message.type === 'TARGET_STATS_DELTA') {
+      pending.targetStatsDeltaApplied = true;
+      applyTargetStatsDelta(message.delta || {});
+      return;
+    }
+
     if (message.type === 'RESULT') {
       pending.resolve({
         ...(message.result || {}),
-        __statsDeltaApplied: Boolean(pending.statsDeltaApplied)
+        __statsDeltaApplied: Boolean(pending.statsDeltaApplied),
+        __targetStatsDeltaApplied: Boolean(pending.targetStatsDeltaApplied)
       });
       return;
     }
@@ -1301,6 +1657,40 @@
     return readSettingsFromUi();
   }
 
+  function getPanelRoot() {
+    return ui.panel?.getRootNode?.() || document;
+  }
+
+  function updateTargetCustomPagesState() {
+    const root = getPanelRoot();
+    const isCustom = root.querySelector('input[name="xta-target-pages"]:checked')?.value === 'custom';
+    const input = root.querySelector('.xta-target-custom-pages');
+    const field = input?.closest('.xta-target-inline-field');
+    if (!input) {
+      return;
+    }
+
+    input.disabled = !isCustom;
+    field?.classList.toggle('is-disabled', !isCustom);
+  }
+
+  function readTargetCheckOptions() {
+    const root = getPanelRoot();
+    const pageMode = root.querySelector('input[name="xta-target-pages"]:checked')?.value || 'latest';
+    const processMode = root.querySelector('input[name="xta-target-mode"]:checked')?.value || 'none';
+    const customPages = normalizeInteger(
+      root.querySelector('.xta-target-custom-pages')?.value,
+      1,
+      1
+    );
+
+    return {
+      pageMode,
+      processMode,
+      customPages
+    };
+  }
+
   function randomJitterSeconds(baseSeconds) {
     const offset = Math.floor(Math.random() * 201) - 100;
     return Math.max(1, baseSeconds + offset);
@@ -1326,7 +1716,13 @@
         return false;
       }
 
-      setStatus(`${label} ${remaining} 秒`, 'running');
+      if (
+        remaining === totalSeconds ||
+        remaining <= 3 ||
+        remaining % COUNTDOWN_STATUS_INTERVAL_SECONDS === 0
+      ) {
+        setStatus(`${label} ${remaining} 秒`, 'running');
+      }
       await sleep(1000);
     }
 
@@ -1341,6 +1737,7 @@
     const options = readOptions();
     state.running = true;
     state.stopping = false;
+    state.activeTask = 'assistant';
     state.loopIndex = 0;
     updateButtons();
     setStatus('准备访问实时搜索页', 'running');
@@ -1372,6 +1769,7 @@
       await appendLog('error', error.message, {});
       state.running = false;
       state.stopping = false;
+      state.activeTask = '';
       updateButtons();
     }
   }
@@ -1389,6 +1787,7 @@
 
     state.running = true;
     state.stopping = false;
+    state.activeTask = 'assistant';
     state.loopIndex = Number(pendingRun.loopIndex || 0);
     applySettings(options);
     updateButtons();
@@ -1520,6 +1919,7 @@
 
       pendingRun.nextRunAt = 0;
       await savePendingRun(pendingRun);
+      await logPeriodicPageRefreshIfNeeded();
       navigating = true;
       navigateSearchForCapture(options.keyword);
     } catch (error) {
@@ -1545,8 +1945,63 @@
       if (!navigating) {
         state.running = false;
         state.stopping = false;
+        state.activeTask = '';
         updateButtons();
       }
+    }
+  }
+
+  async function startTargetCheck() {
+    if (state.running) {
+      return;
+    }
+
+    const options = readTargetCheckOptions();
+    state.running = true;
+    state.stopping = false;
+    state.activeTask = 'target';
+    state.targetStats = defaultTargetStats();
+    renderTargetStats();
+    updateButtons();
+    setStatus('正在检测已关注目标', 'running');
+
+    try {
+      await saveSettings(readSettingsFromUi());
+      await appendTargetLog('info', '已关注目标检测开始', {
+        检测页数: options.pageMode === 'latest'
+          ? '最新1页'
+          : options.pageMode === 'all'
+            ? '全部页数'
+            : options.customPages,
+        处理模式: options.processMode === 'unfollow-all' ? '全部取消关注' : '不处理'
+      });
+
+      const result = await sendPageRequest('RUN_TARGET_CHECK', options, 60 * 60 * 1000);
+
+      if (!result.__targetStatsDeltaApplied) {
+        applyTargetStatsDelta({
+          checked: result.checkedCount,
+          notFollowedBy: result.notFollowedByCount,
+          unfollowed: result.unfollowedCount
+        });
+      }
+
+      setStatus(result.stopped ? '已停止' : '检测完成', result.stopped ? 'idle' : 'success');
+      await appendTargetLog(result.stopped ? 'warn' : 'success', '已关注目标检测结束', {
+        是否停止: result.stopped ? '是' : '否',
+        检测页数: result.pageCount,
+        已检查关注: result.checkedCount,
+        未关注我: result.notFollowedByCount,
+        已取消关注: result.unfollowedCount
+      });
+    } catch (error) {
+      setStatus('检测错误', 'error');
+      await appendTargetLog('error', String(error?.message || error || '未知错误'), {});
+    } finally {
+      state.running = false;
+      state.stopping = false;
+      state.activeTask = '';
+      updateButtons();
     }
   }
 
@@ -1560,7 +2015,8 @@
     setStatus('正在停止', 'running');
     await clearPendingRun();
     sendStopToPage();
-    await appendLog('warn', '已请求停止', {});
+    const logFn = state.activeTask === 'target' ? appendTargetLog : appendLog;
+    await logFn('warn', '已请求停止', {});
   }
 
   async function resetStats() {
@@ -1593,8 +2049,32 @@
 
   chrome.runtime.onMessage.addListener((message) => {
     if (message?.type === 'XTL_LOG_UPDATED') {
-      state.logs = Array.isArray(message.logs) ? message.logs.slice(-LOG_LIMIT) : state.logs;
-      renderLogs();
+      if (message.log) {
+        const added = storeLog('logs', message.log);
+        if (added && state.activeTab === 'assistant') {
+          appendRenderedLog(ui.logList, ui.logCount, state.logs, message.log);
+        } else {
+          updateLogCount(ui.logCount, state.logs);
+        }
+      } else if (Array.isArray(message.logs)) {
+        state.logs = message.logs.slice(-LOG_LIMIT);
+        renderLogs();
+      }
+      return;
+    }
+
+    if (message?.type === 'XTL_TARGET_LOG_UPDATED') {
+      if (message.log) {
+        const added = storeLog('targetLogs', message.log);
+        if (added && state.activeTab === 'target-check') {
+          appendRenderedLog(ui.targetLogList, ui.targetLogCount, state.targetLogs, message.log);
+        } else {
+          updateLogCount(ui.targetLogCount, state.targetLogs);
+        }
+      } else if (Array.isArray(message.logs)) {
+        state.targetLogs = message.logs.slice(-LOG_LIMIT);
+        renderTargetLogs();
+      }
       return;
     }
 

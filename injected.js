@@ -8,6 +8,8 @@
   const FROM_CONTENT_SOURCE = 'xta-content';
   const TO_CONTENT_SOURCE = 'xta-page';
   const FOLLOW_URL = 'https://x.com/i/api/1.1/friendships/create.json';
+  const UNFOLLOW_URL = 'https://x.com/i/api/1.1/friendships/destroy.json';
+  const FOLLOWING_URL = 'https://x.com/i/api/graphql/F42cDX8PDFxkbjjq6JrM2w/Following';
   const CREATE_TWEET_URL = 'https://x.com/i/api/graphql/5CdvsV_zjv4L64XFifAglw/CreateTweet';
   const AUTHORIZATION = 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
 
@@ -19,6 +21,9 @@
   const SPACE_SCROLL_MAX = 5;
   const AFTER_TIMELINE_CAPTURE_MIN_SECONDS = 5;
   const AFTER_TIMELINE_CAPTURE_MAX_SECONDS = 10;
+  const FOLLOWING_PAGE_COUNT = 20;
+  const TARGET_ACTION_MIN_SECONDS = 5;
+  const TARGET_ACTION_MAX_SECONDS = 10;
 
   let stopRequested = false;
   let running = false;
@@ -64,6 +69,48 @@
     responsive_web_graphql_timeline_navigation_enabled: true
   };
 
+  const followingFeatures = {
+    rweb_video_screen_enabled: false,
+    rweb_cashtags_enabled: true,
+    profile_label_improvements_pcf_label_in_post_enabled: true,
+    responsive_web_profile_redirect_enabled: false,
+    rweb_tipjar_consumption_enabled: false,
+    verified_phone_label_enabled: false,
+    creator_subscriptions_tweet_preview_api_enabled: true,
+    responsive_web_graphql_timeline_navigation_enabled: true,
+    responsive_web_graphql_skip_user_profile_image_extensions_enabled: false,
+    premium_content_api_read_enabled: false,
+    communities_web_enable_tweet_community_results_fetch: true,
+    c9s_tweet_anatomy_moderator_badge_enabled: true,
+    responsive_web_grok_analyze_button_fetch_trends_enabled: false,
+    responsive_web_grok_analyze_post_followups_enabled: true,
+    rweb_cashtags_composer_attachment_enabled: true,
+    responsive_web_jetfuel_frame: true,
+    responsive_web_grok_share_attachment_enabled: true,
+    responsive_web_grok_annotations_enabled: true,
+    articles_preview_enabled: true,
+    responsive_web_edit_tweet_api_enabled: true,
+    rweb_conversational_replies_downvote_enabled: false,
+    graphql_is_translatable_rweb_tweet_is_translatable_enabled: true,
+    view_counts_everywhere_api_enabled: true,
+    longform_notetweets_consumption_enabled: true,
+    responsive_web_twitter_article_tweet_consumption_enabled: true,
+    content_disclosure_indicator_enabled: true,
+    content_disclosure_ai_generated_indicator_enabled: true,
+    responsive_web_grok_show_grok_translated_post: true,
+    responsive_web_grok_analysis_button_from_backend: true,
+    post_ctas_fetch_enabled: false,
+    freedom_of_speech_not_reach_fetch_enabled: true,
+    standardized_nudges_misinfo: true,
+    tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled: true,
+    longform_notetweets_rich_text_read_enabled: true,
+    longform_notetweets_inline_media_enabled: false,
+    responsive_web_grok_image_annotation_enabled: true,
+    responsive_web_grok_imagine_annotation_enabled: true,
+    responsive_web_grok_community_note_auto_translation_is_enabled: true,
+    responsive_web_enhance_cards_enabled: false
+  };
+
   function post(type, runId, payload) {
     window.postMessage({
       source: TO_CONTENT_SOURCE,
@@ -79,6 +126,10 @@
 
   function emitStatsDelta(runId, delta) {
     post('STATS_DELTA', runId, { delta });
+  }
+
+  function emitTargetStatsDelta(runId, delta) {
+    post('TARGET_STATS_DELTA', runId, { delta });
   }
 
   function isSearchTimelineUrl(url) {
@@ -190,6 +241,12 @@
     }
   }
 
+  function getCurrentUserIdFromTwid() {
+    const twid = getCookie('twid');
+    const match = String(twid || '').match(/\d+/);
+    return match?.[0] || '';
+  }
+
   async function getXClientTransactionId(inputUrl, method = 'GET') {
     let req;
     const chunk = globalThis.webpackChunk_twitter_responsive_web;
@@ -278,6 +335,65 @@
     return entries;
   }
 
+  function collectFollowingEntries(responseJson) {
+    const instructions = responseJson?.data?.user?.result?.timeline?.timeline?.instructions;
+    const entries = [];
+
+    if (!Array.isArray(instructions)) {
+      return entries;
+    }
+
+    for (const instruction of instructions) {
+      if (instruction?.type !== 'TimelineAddEntries' || !Array.isArray(instruction.entries)) {
+        continue;
+      }
+
+      for (const entry of instruction.entries) {
+        entries.push(entry);
+      }
+    }
+
+    return entries;
+  }
+
+  function getFollowingUser(entry) {
+    if (entry?.content?.entryType !== 'TimelineTimelineItem') {
+      return null;
+    }
+
+    const itemContent = entry?.content?.itemContent || entry?.content?.item_content;
+    const user = itemContent?.user_results?.result || itemContent?.userResults?.result || null;
+    if (!user?.rest_id) {
+      return null;
+    }
+
+    return {
+      userId: user.rest_id,
+      name: user?.core?.name || '',
+      screenName: user?.core?.screen_name || '',
+      followedBy: user?.relationship_perspectives?.followed_by,
+      isBlueVerified: user?.is_blue_verified === true
+    };
+  }
+
+  function getBottomCursor(entries) {
+    for (const entry of entries) {
+      const content = entry?.content;
+      const cursorType = content?.cursorType || content?.cursor_type;
+      if (content?.entryType === 'TimelineTimelineCursor' && cursorType === 'Bottom') {
+        return content?.value || '';
+      }
+    }
+
+    return '';
+  }
+
+  function isTerminalFollowingCursor(cursor) {
+    const text = String(cursor || '').trim();
+    const [left, right] = text.split('|');
+    return left === '0' && Boolean(right);
+  }
+
   function getTweetResult(entry) {
     const itemContent = entry?.content?.itemContent
       || entry?.content?.item_content
@@ -334,6 +450,26 @@
       && Boolean(candidate.tweetId);
   }
 
+  function summarizeActionableCandidates(candidates, options = {}) {
+    const userIds = new Set();
+    let totalCount = 0;
+
+    for (const candidate of candidates) {
+      if (!isActionableCandidate(candidate, options)) {
+        continue;
+      }
+
+      totalCount += 1;
+      userIds.add(String(candidate.userId));
+    }
+
+    return {
+      totalCount,
+      uniqueCount: userIds.size,
+      duplicateCount: Math.max(0, totalCount - userIds.size)
+    };
+  }
+
   function buildFollowBody(userId) {
     return new URLSearchParams({
       include_profile_interstitial_type: '1',
@@ -350,6 +486,28 @@
       skip_status: '1',
       user_id: userId
     }).toString();
+  }
+
+  function buildFollowingUrl(userId, cursor = '') {
+    const url = new URL(FOLLOWING_URL);
+    const variables = {
+      userId,
+      count: FOLLOWING_PAGE_COUNT,
+      includePromotedContent: false,
+      withGrokTranslatedBio: true
+    };
+
+    if (cursor) {
+      variables.cursor = cursor;
+    }
+
+    url.searchParams.set('variables', JSON.stringify(variables));
+    url.searchParams.set('features', JSON.stringify(followingFeatures));
+    return url.toString();
+  }
+
+  function buildUnfollowBody(userId) {
+    return buildFollowBody(userId);
   }
 
   function buildReplyBody(tweetId, commentText) {
@@ -522,6 +680,37 @@
     });
   }
 
+  async function fetchFollowingPage(userId, cursor, csrfToken) {
+    const url = buildFollowingUrl(userId, cursor);
+    const transactionId = await getXClientTransactionId(url, 'GET');
+    return xhrJsonRequest({
+      url,
+      method: 'GET',
+      headers: buildHeaders({
+        csrfToken,
+        transactionId,
+        contentType: 'application/json'
+      }),
+      body: null,
+      actionName: '正在关注列表请求'
+    });
+  }
+
+  async function unfollowUser(userId, csrfToken) {
+    const transactionId = await getXClientTransactionId(UNFOLLOW_URL, 'POST');
+    return xhrJsonRequest({
+      url: UNFOLLOW_URL,
+      method: 'POST',
+      headers: buildHeaders({
+        csrfToken,
+        transactionId,
+        contentType: 'application/x-www-form-urlencoded'
+      }),
+      body: buildUnfollowBody(userId),
+      actionName: '取消关注请求'
+    });
+  }
+
   async function replyTweet(tweetId, commentText, csrfToken) {
     const transactionId = await getXClientTransactionId(CREATE_TWEET_URL, 'POST');
     return xhrJsonRequest({
@@ -658,6 +847,172 @@
     });
   }
 
+  function getTargetPageLimit(payload = {}) {
+    if (payload.pageMode === 'all') {
+      return Number.POSITIVE_INFINITY;
+    }
+
+    if (payload.pageMode === 'custom') {
+      const customPages = Number.parseInt(payload.customPages, 10);
+      return Number.isFinite(customPages) ? Math.max(1, customPages) : 1;
+    }
+
+    return 1;
+  }
+
+  async function handleFollowingTarget(user, options, csrfToken, counters, runId) {
+    counters.checkedCount += 1;
+    emitTargetStatsDelta(runId, { checked: 1 });
+
+    if (user.followedBy !== false) {
+      if (user.followedBy !== true) {
+        log(runId, 'warn', '已关注用户回关状态未知，跳过', {
+          用户: user.screenName,
+          用户编号: user.userId,
+          状态: String(user.followedBy)
+        });
+      }
+      return;
+    }
+
+    counters.notFollowedByCount += 1;
+    emitTargetStatsDelta(runId, { notFollowedBy: 1 });
+
+    if (options.processMode !== 'unfollow-all') {
+      log(runId, 'info', '检测到未关注我的已关注用户，按不处理模式跳过', {
+        用户: user.screenName,
+        用户编号: user.userId,
+        蓝V: user.isBlueVerified ? '是' : '否'
+      });
+      return;
+    }
+
+    try {
+      await unfollowUser(user.userId, csrfToken);
+      counters.unfollowedCount += 1;
+      emitTargetStatsDelta(runId, { unfollowed: 1 });
+      log(runId, 'success', '取消关注成功', {
+        用户: user.screenName,
+        用户编号: user.userId
+      });
+    } catch (error) {
+      log(runId, 'error', '取消关注失败', {
+        用户: user.screenName,
+        用户编号: user.userId,
+        错误: error.message
+      });
+      return;
+    }
+
+    const waitSeconds = randomSeconds(TARGET_ACTION_MIN_SECONDS, TARGET_ACTION_MAX_SECONDS);
+    await sleepWithStop(waitSeconds, runId, '取消关注后随机等待');
+  }
+
+  async function runTargetCheck(payload, runId) {
+    if (!location.hostname.endsWith('x.com')) {
+      throw new Error('请在已登录的 x.com 页面运行');
+    }
+
+    if (running) {
+      throw new Error('页面内已有任务正在运行');
+    }
+
+    const csrfToken = getCookie('ct0');
+    if (!csrfToken) {
+      throw new Error('缺少 ct0 Cookie，请登录 x.com 并刷新页面');
+    }
+
+    const userId = getCurrentUserIdFromTwid();
+    if (!userId) {
+      throw new Error('无法从 twid Cookie 读取当前账号用户编号');
+    }
+
+    running = true;
+    stopRequested = false;
+
+    const counters = {
+      checkedCount: 0,
+      notFollowedByCount: 0,
+      unfollowedCount: 0
+    };
+    const pageLimit = getTargetPageLimit(payload);
+    const processMode = payload.processMode === 'unfollow-all' ? 'unfollow-all' : 'none';
+    let cursor = '';
+    let pageCount = 0;
+
+    try {
+      log(runId, 'info', '已关注目标检测开始', {
+        当前账号: userId,
+        检测页数: pageLimit === Number.POSITIVE_INFINITY ? '全部页数' : pageLimit,
+        处理模式: processMode === 'unfollow-all' ? '全部取消关注' : '不处理'
+      });
+
+      while (!stopRequested && pageCount < pageLimit) {
+        pageCount += 1;
+        log(runId, 'info', '请求正在关注列表', {
+          页码: pageCount,
+          Cursor: cursor || '首次请求'
+        });
+
+        const responseJson = await fetchFollowingPage(userId, cursor, csrfToken);
+        const entries = collectFollowingEntries(responseJson);
+        const users = entries.map(getFollowingUser).filter(Boolean);
+        const nextCursor = getBottomCursor(entries);
+        const reachedLastPage = isTerminalFollowingCursor(nextCursor);
+
+        log(runId, 'success', '正在关注列表解析完成', {
+          页码: pageCount,
+          条目数: entries.length,
+          人员数: users.length,
+          下一页: nextCursor && !reachedLastPage ? '有' : '无'
+        });
+
+        for (const user of users) {
+          if (stopRequested) {
+            break;
+          }
+
+          await handleFollowingTarget(user, { processMode }, csrfToken, counters, runId);
+        }
+
+        if (reachedLastPage) {
+          log(runId, 'info', '检测到最后一页游标，停止翻页', {
+            Cursor: nextCursor
+          });
+        }
+
+        if (stopRequested || !nextCursor || reachedLastPage || nextCursor === cursor || pageCount >= pageLimit) {
+          break;
+        }
+
+        cursor = nextCursor;
+        const waitSeconds = randomSeconds(TARGET_ACTION_MIN_SECONDS, TARGET_ACTION_MAX_SECONDS);
+        const canContinue = await sleepWithStop(waitSeconds, runId, '翻页前随机等待');
+        if (!canContinue) {
+          break;
+        }
+      }
+
+      const result = {
+        stopped: stopRequested,
+        pageCount,
+        ...counters
+      };
+
+      log(runId, 'success', '已关注目标检测完整流程结束', {
+        是否停止: result.stopped ? '是' : '否',
+        检测页数: result.pageCount,
+        已检查关注: result.checkedCount,
+        未关注我: result.notFollowedByCount,
+        已取消关注: result.unfollowedCount
+      });
+
+      return result;
+    } finally {
+      running = false;
+    }
+  }
+
   async function runCycle(payload, runId) {
     if (!location.hostname.endsWith('x.com')) {
       throw new Error('请在已登录的 x.com 页面运行');
@@ -730,19 +1085,34 @@
         onlyBlueVerified: Boolean(payload.onlyBlueVerified),
         twidCookie
       };
-      const actionableCount = candidates.filter((candidate) => (
-        isActionableCandidate(candidate, actionOptions)
-      )).length;
+      const actionSummary = summarizeActionableCandidates(candidates, actionOptions);
+      const actionableCount = actionSummary.uniqueCount;
 
       log(runId, 'success', '时间线解析完成', {
         条目数: entries.length,
         命中数: candidates.length,
-        需执行数: actionableCount
+        需执行数: actionableCount,
+        重复用户跳过: actionSummary.duplicateCount
       });
 
+      const handledActionableUserIds = new Set();
       for (const candidate of candidates) {
         if (stopRequested) {
           break;
+        }
+
+        if (isActionableCandidate(candidate, actionOptions)) {
+          const userKey = String(candidate.userId);
+          if (handledActionableUserIds.has(userKey)) {
+            log(runId, 'info', '同一轮已处理过该用户，跳过重复发文', {
+              用户: candidate.screenName,
+              用户编号: candidate.userId,
+              推文编号: candidate.tweetId
+            });
+            continue;
+          }
+
+          handledActionableUserIds.add(userKey);
         }
 
         await handleCandidate(candidate, {
@@ -790,12 +1160,14 @@
       return;
     }
 
-    if (type !== 'RUN_CYCLE') {
+    if (type !== 'RUN_CYCLE' && type !== 'RUN_TARGET_CHECK') {
       return;
     }
 
     try {
-      const result = await runCycle(payload || {}, runId);
+      const result = type === 'RUN_TARGET_CHECK'
+        ? await runTargetCheck(payload || {}, runId)
+        : await runCycle(payload || {}, runId);
       post('RESULT', runId, { result });
     } catch (error) {
       running = false;

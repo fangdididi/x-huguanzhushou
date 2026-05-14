@@ -1,5 +1,8 @@
 const LOG_KEY = 'xtlLogs';
+const LOG_LIMIT = 500;
+const LOG_RENDER_LIMIT = 80;
 const X_HOST_RE = /(^|\.)x\.com$/i;
+let currentLogs = [];
 
 const els = {
   pageStatus: document.querySelector('#pageStatus'),
@@ -41,12 +44,68 @@ function formatDetails(details) {
   return text.length > 220 ? `${text.slice(0, 220)}...` : text;
 }
 
+function storeLog(log) {
+  if (log?.id && currentLogs.some((item) => item.id === log.id)) {
+    return false;
+  }
+
+  currentLogs.push(log);
+  currentLogs = currentLogs.slice(-LOG_LIMIT);
+  return true;
+}
+
+function updateLogCount() {
+  els.logCount.textContent = `${currentLogs.length} / ${LOG_LIMIT}`;
+}
+
+function createLogRow(log) {
+  const row = document.createElement('div');
+  row.className = `log-row ${log.level || 'info'}`;
+
+  const main = document.createElement('div');
+  main.className = 'log-main';
+
+  const time = document.createElement('span');
+  time.className = 'log-time';
+  time.textContent = formatTime(log.ts);
+
+  const message = document.createElement('span');
+  message.className = 'log-message';
+  message.textContent = log.message || '';
+
+  main.append(time, message);
+  row.append(main);
+
+  const details = formatDetails(log.details);
+  if (details) {
+    const detailsEl = document.createElement('div');
+    detailsEl.className = 'log-details';
+    detailsEl.textContent = details;
+    row.append(detailsEl);
+  }
+
+  return row;
+}
+
+function appendRenderedLog(log) {
+  updateLogCount();
+  const empty = els.logList.querySelector('.empty');
+  if (empty) {
+    empty.remove();
+  }
+
+  els.logList.prepend(createLogRow(log));
+  while (els.logList.children.length > LOG_RENDER_LIMIT) {
+    els.logList.lastElementChild?.remove();
+  }
+}
+
 function renderLogs(logs) {
-  const safeLogs = Array.isArray(logs) ? logs : [];
-  els.logCount.textContent = `${safeLogs.length} / 500`;
+  currentLogs = Array.isArray(logs) ? logs.slice(-LOG_LIMIT) : [];
+  updateLogCount();
   els.logList.replaceChildren();
 
-  if (safeLogs.length === 0) {
+  if (currentLogs.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'empty';
     empty.textContent = '暂无日志';
@@ -54,33 +113,8 @@ function renderLogs(logs) {
     return;
   }
 
-  for (const log of safeLogs.slice().reverse().slice(0, 80)) {
-    const row = document.createElement('div');
-    row.className = `log-row ${log.level || 'info'}`;
-
-    const main = document.createElement('div');
-    main.className = 'log-main';
-
-    const time = document.createElement('span');
-    time.className = 'log-time';
-    time.textContent = formatTime(log.ts);
-
-    const message = document.createElement('span');
-    message.className = 'log-message';
-    message.textContent = log.message || '';
-
-    main.append(time, message);
-    row.append(main);
-
-    const details = formatDetails(log.details);
-    if (details) {
-      const detailsEl = document.createElement('div');
-      detailsEl.className = 'log-details';
-      detailsEl.textContent = details;
-      row.append(detailsEl);
-    }
-
-    els.logList.append(row);
+  for (const log of currentLogs.slice().reverse().slice(0, LOG_RENDER_LIMIT)) {
+    els.logList.append(createLogRow(log));
   }
 }
 
@@ -142,7 +176,15 @@ async function init() {
 
   chrome.runtime.onMessage.addListener((message) => {
     if (message?.type === 'XTL_LOG_UPDATED') {
-      renderLogs(message.logs || []);
+      if (message.log) {
+        if (storeLog(message.log)) {
+          appendRenderedLog(message.log);
+        } else {
+          updateLogCount();
+        }
+      } else {
+        renderLogs(message.logs || []);
+      }
       return;
     }
 

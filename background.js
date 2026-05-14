@@ -1,19 +1,20 @@
 const LOG_KEY = 'xtlLogs';
+const TARGET_LOG_KEY = 'xtaTargetLogs';
 const LOG_LIMIT = 500;
 
 function readStorage(defaults) {
   return chrome.storage.local.get(defaults);
 }
 
-async function appendLog(log) {
-  const stored = await readStorage({ [LOG_KEY]: [] });
-  const logs = Array.isArray(stored[LOG_KEY]) ? stored[LOG_KEY] : [];
+async function appendLog(log, key = LOG_KEY, updateType = 'XTL_LOG_UPDATED') {
+  const stored = await readStorage({ [key]: [] });
+  const logs = Array.isArray(stored[key]) ? stored[key] : [];
   logs.push(log);
   const nextLogs = logs.slice(-LOG_LIMIT);
 
-  await chrome.storage.local.set({ [LOG_KEY]: nextLogs });
+  await chrome.storage.local.set({ [key]: nextLogs });
 
-  chrome.runtime.sendMessage({ type: 'XTL_LOG_UPDATED', log, logs: nextLogs }).catch(() => {
+  chrome.runtime.sendMessage({ type: updateType, log, count: nextLogs.length }).catch(() => {
     // Popup may be closed.
   });
 }
@@ -21,6 +22,13 @@ async function appendLog(log) {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'XTL_APPEND_LOG') {
     appendLog(message.log)
+      .then(() => sendResponse({ ok: true }))
+      .catch((error) => sendResponse({ ok: false, error: error.message }));
+    return true;
+  }
+
+  if (message?.type === 'XTL_APPEND_TARGET_LOG') {
+    appendLog(message.log, TARGET_LOG_KEY, 'XTL_TARGET_LOG_UPDATED')
       .then(() => sendResponse({ ok: true }))
       .catch((error) => sendResponse({ ok: false, error: error.message }));
     return true;
