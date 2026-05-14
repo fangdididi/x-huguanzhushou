@@ -38,10 +38,17 @@
 
 ## 使用方法
 
+先下载最新版压缩包：
+
+- GitHub 下载页：[x-huguanzhushou Releases](https://github.com/fangdididi/x-huguanzhushou/releases/latest)
+- Gitee 下载页：[x-huguanzhushou Releases](https://gitee.com/fanglongqing/x-huguanzhushou/releases)
+
+下载 `x-huguanzhushou-v*.zip` 后解压到本机目录，再按下面步骤加载：
+
 1. 打开 `chrome://extensions`
 2. 开启“开发者模式”
 3. 点击“加载已解压的扩展程序”
-4. 选择本仓库目录
+4. 选择解压后的插件目录
 5. 打开并登录 twitter/x.com（`https://x.com`）
 6. 点击扩展图标，再点击“显示页面窗口”
 7. 在页面窗口中设置关键词、选择评论文件，然后点击“开始执行”
