@@ -13,6 +13,7 @@
   const LOG_RENDER_LIMIT = 80;
   const COUNTDOWN_STATUS_INTERVAL_SECONDS = 10;
   const PAGE_REFRESH_EVERY_ROUNDS = 5;
+  const TASK_LOCK_HEARTBEAT_MS = 20 * 1000;
   const LOG_KEY = 'xtlLogs';
   const TARGET_LOG_KEY = 'xtaTargetLogs';
   const STATS_KEY = 'xtaStats';
@@ -63,6 +64,8 @@
   };
 
   const ui = {};
+  let activeTaskLock = null;
+  let taskLockHeartbeatId = null;
 
   function defaultStats() {
     return {
@@ -105,6 +108,69 @@
 
   function sendRuntimeMessage(message) {
     return chrome.runtime.sendMessage(message).catch(() => undefined);
+  }
+
+  function createTaskLockRunId() {
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
+  function getTaskLockBusyMessage(response) {
+    const task = response?.lock?.task || '其他任务';
+    return `已有其他 X 页面正在运行${task}，当前页面不会重复执行`;
+  }
+
+  async function acquireTaskLock(task, runId) {
+    const response = await sendRuntimeMessage({
+      type: 'XTA_ACQUIRE_TASK_LOCK',
+      task,
+      runId
+    });
+
+    if (response?.ok) {
+      return response.lock;
+    }
+
+    throw new Error(response?.locked ? getTaskLockBusyMessage(response) : (response?.error || '申请运行锁失败'));
+  }
+
+  function stopTaskLockHeartbeat() {
+    if (taskLockHeartbeatId) {
+      window.clearInterval(taskLockHeartbeatId);
+      taskLockHeartbeatId = null;
+    }
+  }
+
+  function startTaskLockHeartbeat(task, runId) {
+    activeTaskLock = { task, runId };
+    stopTaskLockHeartbeat();
+    taskLockHeartbeatId = window.setInterval(() => {
+      sendRuntimeMessage({
+        type: 'XTA_REFRESH_TASK_LOCK',
+        task,
+        runId
+      });
+    }, TASK_LOCK_HEARTBEAT_MS);
+  }
+
+  async function ensureTaskLock(pendingRun, task) {
+    if (!pendingRun.lockRunId) {
+      pendingRun.lockRunId = createTaskLockRunId();
+    }
+
+    await acquireTaskLock(task, pendingRun.lockRunId);
+    startTaskLockHeartbeat(task, pendingRun.lockRunId);
+    return pendingRun.lockRunId;
+  }
+
+  async function releaseTaskLock(runId = activeTaskLock?.runId) {
+    stopTaskLockHeartbeat();
+    if (runId) {
+      await sendRuntimeMessage({
+        type: 'XTA_RELEASE_TASK_LOCK',
+        runId
+      });
+    }
+    activeTaskLock = null;
   }
 
   async function appendLog(level, message, details = {}) {
@@ -1757,6 +1823,15 @@
     }
 
     const options = readOptions();
+    const pendingRun = {
+      active: true,
+      options,
+      comments: [],
+      loopIndex: 0,
+      nextRunAt: 0,
+      lockRunId: createTaskLockRunId(),
+      createdAt: Date.now()
+    };
     state.running = true;
     state.stopping = false;
     state.activeTask = 'assistant';
@@ -1766,21 +1841,16 @@
 
     try {
       await saveSettings(options);
+      await ensureTaskLock(pendingRun, '互关助手');
 
       const comments = await loadComments();
+      pendingRun.comments = comments;
       await appendLog('success', '评论库已加载', {
         数量: comments.length,
         来源: options.commentFileName
       });
 
-      await savePendingRun({
-        active: true,
-        options,
-        comments,
-        loopIndex: 0,
-        nextRunAt: 0,
-        createdAt: Date.now()
-      });
+      await savePendingRun(pendingRun);
 
       await appendLog('info', '准备访问 X 实时搜索页并抓取真实搜索时间线响应', {
         地址: buildSearchCaptureUrl(options.keyword)
@@ -1792,6 +1862,7 @@
       state.running = false;
       state.stopping = false;
       state.activeTask = '';
+      await releaseTaskLock(pendingRun.lockRunId);
       updateButtons();
     }
   }
@@ -1801,6 +1872,17 @@
     const pendingRun = stored[PENDING_RUN_KEY];
 
     if (!pendingRun?.active || !location.hostname.endsWith('x.com')) {
+      return;
+    }
+
+    const taskName = pendingRun.task === 'target' ? '已关注目标检测' : '互关助手';
+    try {
+      await ensureTaskLock(pendingRun, taskName);
+      await savePendingRun(pendingRun);
+    } catch (error) {
+      setStatus('其他窗口运行中', 'idle');
+      const logFn = pendingRun.task === 'target' ? appendTargetLog : appendLog;
+      await logFn('warn', String(error?.message || error || '已有其他 X 页面正在运行任务'), {});
       return;
     }
 
@@ -1970,6 +2052,7 @@
       await appendLog('error', errorMessage, {});
     } finally {
       if (!navigating) {
+        await releaseTaskLock(pendingRun.lockRunId);
         state.running = false;
         state.stopping = false;
         state.activeTask = '';
@@ -1988,12 +2071,20 @@
       active: true,
       task: 'target',
       options,
+      lockRunId: createTaskLockRunId(),
       createdAt: Date.now()
     };
 
-    await saveSettings(readSettingsFromUi());
-    await savePendingRun(pendingRun);
-    await runTargetCheckFromPending(pendingRun, false);
+    try {
+      await ensureTaskLock(pendingRun, '已关注目标检测');
+      await saveSettings(readSettingsFromUi());
+      await savePendingRun(pendingRun);
+      await runTargetCheckFromPending(pendingRun, false);
+    } catch (error) {
+      await releaseTaskLock(pendingRun.lockRunId);
+      setStatus('检测错误', 'error');
+      await appendTargetLog('error', String(error?.message || error || '未知错误'), {});
+    }
   }
 
   async function runTargetCheckFromPending(pendingRun, resumed) {
@@ -2042,6 +2133,7 @@
       setStatus('检测错误', 'error');
       await appendTargetLog('error', String(error?.message || error || '未知错误'), {});
     } finally {
+      await releaseTaskLock(pendingRun.lockRunId);
       state.running = false;
       state.stopping = false;
       state.activeTask = '';
@@ -2058,6 +2150,7 @@
     updateButtons();
     setStatus('正在停止', 'running');
     await clearPendingRun();
+    await releaseTaskLock();
     sendStopToPage();
     const logFn = state.activeTask === 'target' ? appendTargetLog : appendLog;
     await logFn('warn', '已请求停止', {});
